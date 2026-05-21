@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="card p-4 shadow-sm text-center">
+
+    <h3>User Created ✅</h3>
+
+    <p><strong>Username:</strong> {{ username }}</p>
+    <p><strong>Password:</strong> 
+        <span id="pwd">{{ password }}</span>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="copyPassword()">📋 Copy</button>
+    </p>
+
+    <p class="text-danger">
+        ⚠️ Save this password now. It will not be shown again.
+    </p>
+
+    <a href="/admin/users" class="btn btn-dark mt-3">Back</a>
+
+</div>
+
+<script>
+function copyPassword() {
+    const pwd = document.getElementById("pwd").innerText;
+    navigator.clipboard.writeText(pwd).then(() => {
+        alert("Password copied!");
+    });
+}
+</script>
+
+{% endblock %}

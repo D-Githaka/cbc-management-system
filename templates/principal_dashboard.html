@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>{{ school.name }} – School Dashboard</h2>
+<div class="row">
+    {% for g in grades %}
+    <div class="col-md-3 mb-3">
+        <div class="card p-3 text-center shadow-sm">
+            <h5>{{ g }}</h5>
+            <p>{{ grade_counts[g] }} students</p>
+            <a href="{{ url_for('enter_marks', school_id=school.id, grade=g, term='Term 1', year=2026) }}" class="btn btn-sm btn-outline-primary">Enter Marks</a>
+            <a href="{{ url_for('analytics', school_id=school.id, grade=g) }}" class="btn btn-sm btn-outline-secondary">Analytics</a>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

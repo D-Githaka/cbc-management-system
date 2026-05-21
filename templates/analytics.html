@@ -1,0 +1,403 @@
+{% extends 'base.html' %}
+{% block content %}
+<div id="analyticsExportArea">
+<h2>Admin Analytics Dashboard</h2>
+
+<!-- FILTER PANEL -->
+<div class="card p-4 mb-3 shadow-sm">
+    <form id="filterForm">
+        <div class="row g-3">
+
+            <!-- SCHOOL -->
+            <div class="col-md-3">
+                <select name="school_id" id="schoolSelect" class="form-control" required>
+                    <option value="">Select School</option>
+                    {% for s in schools %}
+                        <option value="{{ s.id }}">{{ s.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- GRADE (no default option, populated by JS, defaults to Grade 9) -->
+            <div class="col-md-3">
+                <select name="grade" id="gradeSelect" class="form-control" required>
+                    <!-- filled dynamically -->
+                </select>
+            </div>
+
+            <!-- YEAR -->
+            <div class="col-md-3">
+                <select name="year" class="form-control">
+                    <option value="">Year</option>
+                    {% for y in range(2021, 2031) %}
+                        <option value="{{ y }}">{{ y }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- TERM -->
+            <div class="col-md-3">
+                <select name="term" class="form-control">
+                    <option value="">Term</option>
+                    <option value="Term 1">Term 1</option>
+                    <option value="Term 2">Term 2</option>
+                    <option value="Term 3">Term 3</option>
+                </select>
+            </div>
+
+        </div>
+
+        <br>
+        <button class="btn btn-primary">Apply Filters</button>
+    </form>
+</div>
+
+<!-- Spinner (hidden by default) -->
+<div id="loadingSpinner" class="text-center d-none">
+    <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+    </div>
+    <p>Updating analytics...</p>
+</div>
+<!-- SCHOOL OVERALL PERFORMANCE (ALL GRADES) -->
+<div class="row mb-3">
+    <div class="col-md-6 offset-md-3">
+        <div class="card p-4 text-center shadow-sm bg-light">
+            <h6>School Average (All Grades)</h6>
+            <h3 id="overallAvgScore" class="display-6 fw-bold">--</h3>
+            <small class="text-muted" id="overallStudentCount"></small>
+        </div>
+    </div>
+</div>
+<!-- KPI CARDS (always visible) -->
+<div class="row mb-3">
+    <div class="col-md-4">
+        <div class="card p-4 text-center shadow-sm">
+            <h6>Total Records</h6>
+            <h3 id="totalRecords" class="display-6 fw-bold">0</h3>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card p-4 text-center shadow-sm">
+            <h6>Average Score</h6>
+            <h3 id="avgScore" class="display-6 fw-bold">0</h3>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card p-4 text-center shadow-sm">
+            <h6>Subjects Covered</h6>
+            <h3 id="subjectCount" class="display-6 fw-bold">0</h3>
+        </div>
+    </div>
+</div>
+
+<!-- GRADE DRILLDOWN -->
+<div class="card p-4 mb-3 shadow-sm">
+    <h5>Grades</h5>
+    <div class="d-flex flex-wrap gap-2">
+        {% for g in grades %}
+        <a class="btn btn-outline-primary btn-sm {% if request.args.get('grade') == g %}active{% endif %}"
+           href="{{ url_for('analytics', school_id=request.args.get('school_id'), grade=g) }}">
+            {{ g }}
+        </a>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="card p-4 mb-3 shadow-sm">
+    <h5>Students</h5>
+    <ul class="list-group" id="studentList"></ul>
+</div>
+
+<!-- CHARTS -->
+<div class="card p-4 shadow-sm mb-3">
+    <h5>Performance by Subject</h5>
+    <div id="chart1"></div>
+</div>
+
+<div class="card p-4 shadow-sm">
+    <h5>Grade Comparison</h5>
+    <div id="chart2"></div>
+</div>
+
+</div>  
+
+<button class="btn btn-danger" onclick="exportPDF()">
+    📄 Export to PDF
+</button>
+
+<script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
+<script>
+class AnalyticsController {
+    constructor() {
+        this.state = {
+            school_id: "",
+            grade: "Grade 9",
+            year: "",
+            term: ""
+        };
+        this.lastDataHash = null;
+        this.autoRefreshInterval = null;
+        this.isTabActive = true;
+
+        this.schoolSelect = document.getElementById("schoolSelect");
+        this.gradeSelect = document.getElementById("gradeSelect");
+        this.yearSelect = document.querySelector("[name='year']");
+        this.termSelect = document.querySelector("[name='term']");
+    }
+
+    bindEvents() {
+        this.schoolSelect.addEventListener("change", e =>
+            this.setState({ school_id: e.target.value, grade: "Grade 9" })
+        );
+        this.gradeSelect.addEventListener("change", e =>
+            this.setState({ grade: e.target.value })
+        );
+        document.getElementById("filterForm").addEventListener("submit", e => {
+            e.preventDefault();
+            const fd = new FormData(e.target);
+            this.setState({
+                school_id: fd.get("school_id"),
+                grade: fd.get("grade") || "Grade 9",
+                year: fd.get("year"),
+                term: fd.get("term")
+            });
+        });
+
+        document.addEventListener("visibilitychange", () => {
+            this.isTabActive = !document.hidden;
+        });
+    }
+
+    async setState(updates) {
+        Object.assign(this.state, updates);
+        await this.cascadeFilters();
+        await this.loadAnalytics();
+    }
+
+    async cascadeFilters() {
+        if (this.state.school_id) {
+            const res = await fetch(`/api/grades?school_id=${this.state.school_id}`);
+            const data = await res.json();
+            this.gradeSelect.innerHTML = '';
+            data.grades.forEach(g => {
+                this.gradeSelect.innerHTML += `<option value="${g}">${g}</option>`;
+            });
+            if (!data.grades.includes(this.state.grade)) {
+                this.state.grade = data.grades.includes("Grade 9") ? "Grade 9" : (data.grades[0] || "");
+            }
+            this.gradeSelect.value = this.state.grade;
+        } else {
+            this.gradeSelect.innerHTML = '';
+            this.state.grade = "Grade 9";
+        }
+        await this.fetchOverallSchoolAverage();
+    }
+
+    async loadAnalytics() {
+        document.getElementById("loadingSpinner").classList.remove("d-none");
+        if (!this.state.school_id) {
+            document.getElementById("loadingSpinner").classList.add("d-none");
+            return;
+        }
+        try {
+            const params = new URLSearchParams({
+                school_id: this.state.school_id,
+                grade: this.state.grade,
+                year: this.state.year,
+                term: this.state.term
+            }).toString();
+            const res = await fetch("/api/analytics?" + params);
+            const json = await res.json();
+            const newHash = JSON.stringify(json.data);
+            if (newHash !== this.lastDataHash) {
+                this.lastDataHash = newHash;
+                updateKPIs(json.data);
+                drawCharts(json.data);
+                renderStudents(json.data);
+            }
+            await this.fetchOverallSchoolAverage();
+        } catch (err) {
+            console.error("Analytics error:", err);
+        } finally {
+            document.getElementById("loadingSpinner").classList.add("d-none");
+        }
+    }
+
+    async fetchOverallSchoolAverage() {
+        const el = document.getElementById("overallAvgScore");
+        const countEl = document.getElementById("overallStudentCount");
+        if (!el || !this.state.school_id) {
+            if (el) el.innerText = "--";
+            if (countEl) countEl.innerText = "";
+            return;
+        }
+        try {
+            const params = new URLSearchParams({
+                school_id: this.state.school_id,
+                year: this.state.year,
+                term: this.state.term
+            }).toString();
+            const res = await fetch("/api/school_overview?" + params);
+            const data = await res.json();
+            el.innerText = data.avg_score;
+            countEl.innerText = `${data.student_count} students`;
+        } catch (err) {
+            el.innerText = "Error";
+            countEl.innerText = "";
+        }
+    }
+
+    async restoreFromURL() {
+        const params = new URLSearchParams(window.location.search);
+        this.state.school_id = params.get("school_id") || "";
+        this.state.grade = params.get("grade") || "Grade 9";
+        this.state.year = params.get("year") || "";
+        this.state.term = params.get("term") || "";
+
+        if (!this.state.school_id && this.schoolSelect.options.length > 1) {
+            this.state.school_id = this.schoolSelect.options[1].value;
+        }
+        this.schoolSelect.value = this.state.school_id;
+        this.yearSelect.value = this.state.year;
+        this.termSelect.value = this.state.term;
+
+        await this.cascadeFilters();
+        await this.loadAnalytics();
+        this.startAutoRefresh();
+    }
+
+    startAutoRefresh() {
+        this.stopAutoRefresh();
+        this.autoRefreshInterval = setInterval(() => {
+            if (this.isTabActive) this.loadAnalytics();
+        }, 5000);
+    }
+
+    stopAutoRefresh() {
+        clearInterval(this.autoRefreshInterval);
+    }
+}
+
+// Helper functions
+function updateKPIs(data) {
+    if (!data || data.length === 0) {
+        document.getElementById("totalRecords").innerText = "0";
+        document.getElementById("avgScore").innerText = "0";
+        document.getElementById("subjectCount").innerText = "0";
+        return;
+    }
+    document.getElementById("totalRecords").innerText = data.length;
+    let totalScore = 0;
+    const uniqueSubjects = new Set();
+    data.forEach(row => {
+        totalScore += (row.score || row.avg_score || 0);
+        uniqueSubjects.add(row.subject);
+    });
+    const avg = (totalScore / data.length).toFixed(2);
+    document.getElementById("avgScore").innerText = avg;
+    document.getElementById("subjectCount").innerText = uniqueSubjects.size;
+}
+
+function renderStudents(data) {
+    const studentList = document.getElementById("studentList");
+    studentList.innerHTML = "";
+    if (!data || data.length === 0) {
+        studentList.innerHTML = "<li class='list-group-item text-muted'>No students found for these filters.</li>";
+        return;
+    }
+
+    const studentMap = new Map();
+    data.forEach(row => {
+        const id = row.student_id;
+        if (!studentMap.has(id)) {
+            studentMap.set(id, { name: row.student_name, totalScore: 0, count: 0 });
+        }
+        const s = studentMap.get(id);
+        s.totalScore += row.avg_score;
+        s.count += 1;
+    });
+
+    const students = Array.from(studentMap.entries()).map(([id, val]) => ({
+        id,
+        name: val.name,
+        avg: (val.totalScore / val.count).toFixed(2)
+    }));
+    students.sort((a, b) => b.avg - a.avg);
+
+    students.forEach(s => {
+        const li = document.createElement("li");
+        li.className = "list-group-item d-flex justify-content-between align-items-center";
+        li.innerHTML = `<a href="/student/${s.id}" class="text-decoration-none">${s.name}</a>
+                        <span class="badge bg-secondary">${s.avg}</span>`;
+        studentList.appendChild(li);
+    });
+}
+
+function drawCharts(data) {
+    if (!data || data.length === 0) {
+        Plotly.purge("chart1");
+        Plotly.purge("chart2");
+        document.getElementById("chart1").innerHTML = "<div class='text-center text-muted p-5'>No data available for the selected filters.</div>";
+        document.getElementById("chart2").innerHTML = "";
+        return;
+    }
+    const subjectMap = {};
+    const gradeMap = {};
+    for (const d of data) {
+        if (!subjectMap[d.subject]) subjectMap[d.subject] = { sum: 0, count: 0 };
+        subjectMap[d.subject].sum += d.avg_score;
+        subjectMap[d.subject].count++;
+        if (!gradeMap[d.grade]) gradeMap[d.grade] = [];
+        gradeMap[d.grade].push(d);
+    }
+    const subjects = Object.keys(subjectMap);
+    const subjectAvg = subjects.map(sub => subjectMap[sub].sum / subjectMap[sub].count);
+    Plotly.react("chart1", [{ x: subjects, y: subjectAvg, type: "bar" }], {
+        title: "Average Performance by Subject"
+    });
+    const traces = Object.entries(gradeMap).map(([grade, rows]) => ({
+        x: rows.map(d => d.subject),
+        y: rows.map(d => d.avg_score),
+        type: "bar",
+        name: grade
+    }));
+    Plotly.react("chart2", traces, { barmode: "group", title: "Grade Comparison" });
+}
+
+async function exportPDF() {
+    const element = document.getElementById("analyticsExportArea");
+    if (!element) { alert("Export area not found"); return; }
+    const canvas = await html2canvas(element, { scale: 2 });
+    const imgData = canvas.toDataURL("image/png");
+    const pdf = new window.jspdf.jsPDF("p", "mm", "a4");
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const imgWidth = pageWidth;
+    const imgHeight = canvas.height * imgWidth / canvas.width;
+    let heightLeft = imgHeight;
+    let position = 0;
+    pdf.text("Analytics Report", 10, 10);
+    pdf.text(new Date().toLocaleString(), 10, 16);
+    pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+    heightLeft -= 297;
+    while (heightLeft > 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+        heightLeft -= 297;
+    }
+    pdf.save("analytics_report.pdf");
+}
+
+// Initialization
+document.addEventListener("DOMContentLoaded", async () => {
+    const controller = new AnalyticsController();
+    controller.bindEvents();
+    await controller.restoreFromURL();
+    window.analyticsController = controller;
+});
+</script>
+{% endblock %}

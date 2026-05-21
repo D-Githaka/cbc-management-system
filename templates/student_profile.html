@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<h2>{{ student.name }} - Performance Dashboard</h2>
+<form method="GET" class="row mb-3">
+    <div class="col-auto">
+        <select name="term" class="form-select">
+            <option value="">All Terms</option>
+            {% for t in ["Term 1","Term 2","Term 3"] %}
+                <option value="{{ t }}" {% if t == selected_term %}selected{% endif %}>{{ t }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-auto">
+        <select name="year" class="form-select">
+            <option value="">All Years</option>
+            {% for ty in terms_years %}
+                <option value="{{ ty.year }}" {% if ty.year|string == selected_year %}selected{% endif %}>{{ ty.year }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary">Filter</button>
+    </div>
+</form>
+<div class="row mb-4">
+
+    <div class="col-md-4">
+        <div class="card p-3 shadow-sm text-center">
+            <h6>Total Records</h6>
+            <h3>{{ data|length }}</h3>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card p-3 shadow-sm text-center">
+            <h6>Average Score</h6>
+            <h3>
+                {{ (data|sum(attribute='score') / (data|length or 1)) | round(2) }}
+            </h3>
+        </div>
+    </div>
+
+</div>
+
+<div class="card p-3 shadow-sm">
+    <h5>Subject Performance</h5>
+    <div id="chart"></div>
+</div>
+
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+<script>
+let data = {{ data | tojson }};
+
+let subjects = [...new Set(data.map(d => d.subject))];
+
+let scores = subjects.map(sub => {
+    let filtered = data.filter(d => d.subject === sub);
+    return filtered.reduce((a,b) => a + b.score, 0) / filtered.length;
+});
+
+Plotly.newPlot("chart", [{
+    x: subjects,
+    y: scores,
+    type: "bar"
+}], {
+    title: "Student Subject Performance"
+});
+</script>
+
+{% endblock %}

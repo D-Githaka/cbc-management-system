@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h2>Add Subject</h2>
+
+<form method="POST" class="card p-4 shadow-sm">
+    <div class="mb-3">
+        <label>School Type</label>
+        <select name="type" class="form-select" required>
+            <option value="Public">Public</option>
+            <option value="Private">Private</option>
+        </select>
+    </div>
+    <div class="mb-3">
+        <label>Subject Name</label>
+        <input type="text" name="name" class="form-control" required>
+    </div>
+
+    <div class="mb-3">
+        <label>Grade</label>
+        <select name="grade" class="form-select">
+            {% for g in ["PP1","PP2","Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9"] %}
+                <option value="{{ g }}">{{ g }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <button class="btn btn-primary">Save</button>
+</form>
+{% endblock %}

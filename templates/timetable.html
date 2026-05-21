@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Timetable Generator</h2>
+
+<div class="card p-4 shadow-sm">
+    <form method="POST" enctype="multipart/form-data">
+        <div class="mb-3">
+            <label class="form-label">Select Grades</label>
+            <div class="d-flex flex-wrap gap-2">
+                {% for g in all_grades %}
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="grades"
+                           value="{{ g }}" id="{{ g|replace(' ','') }}" checked>
+                    <label class="form-check-label" for="{{ g|replace(' ','') }}">{{ g }}</label>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <hr>
+        <h5>Option 1: Upload CSV Files</h5>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Subjects CSV</label>
+                <input type="file" name="subjects_file" class="form-control" accept=".csv">
+                <small class="text-muted">
+                    Columns: <strong>Subject</strong>, then one column per selected grade (e.g. PP1, Grade 1) with weekly hours.
+                </small>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Allocation CSV</label>
+                <input type="file" name="alloc_file" class="form-control" accept=".csv">
+                <small class="text-muted">
+                    Columns: <strong>Level, Subject, Teacher</strong> (teacher name or ID). Level can be "PP1", "Grade 1", etc.
+                </small>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary mb-3">Generate Timetable</button>
+
+        <hr>
+        <h5>Option 2: Download Templates</h5>
+        <p class="text-muted">Get pre‑filled CSV templates based on the subjects already in your database.</p>
+        <div class="d-flex gap-2">
+            <button type="submit" name="download_subjects_template" value="1" class="btn btn-outline-secondary">
+                📥 Subjects Template
+            </button>
+            <button type="submit" name="download_alloc_template" value="1" class="btn btn-outline-secondary">
+                📥 Allocation Template
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

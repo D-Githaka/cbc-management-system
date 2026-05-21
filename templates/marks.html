@@ -1,0 +1,142 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<h2 class="mb-4">Marks Management</h2>
+
+<div class="card p-4 shadow-sm">
+
+<form action="/enter_marks" method="GET">
+    <div class="row g-3">
+
+        {% if current_user.role == "admin" %}
+        <div class="col-md-3">
+            <label>School</label>
+            <select name="school_id" class="form-select" required>
+                {% for s in schools %}
+                    <option value="{{ s.id }}">{{ s.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+
+        <div class="col-md-3">
+            <label>Grade</label>
+            <select name="grade" class="form-select" required>
+                <option value="">Select Grade</option>
+                {% for g in ["PP1","PP2","Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9"] %}
+                    <option value="{{ g }}">{{ g }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="col-md-3">
+            <label>Term</label>
+            <select name="term" class="form-select" required>
+                <option value="">Select Term</option>
+                <option>Term 1</option>
+                <option>Term 2</option>
+                <option>Term 3</option>
+            </select>
+        </div>
+
+        <div class="col-md-3">
+            <label>Year</label>
+            <select name="year" class="form-select" required>
+                <option value="">Year</option>
+                {% for y in range(2021, 2031) %}
+                    <option value="{{ y }}">{{ y }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+    </div>
+
+    <div class="d-flex gap-2 mt-3">
+        <button class="btn btn-dark">Proceed to Enter Marks</button>
+        <a id="addStudentLink" href="/add_student" class="btn btn-success d-none">➕ Add Student</a>
+    </div>
+</form>
+    <div class="modal fade" id="postAddModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">Student Added</h5>
+      </div>
+
+      <div class="modal-body">
+        What would you like to do next?
+      </div>
+
+      <div class="modal-footer">
+
+        <a id="addAnotherBtn" class="btn btn-success">
+            ➕ Add Another Student
+        </a>
+
+        <a id="proceedBtn" class="btn btn-dark">
+            Proceed to Enter Marks
+        </a>
+
+      </div>
+
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script>
+// ---------- Update "Add Student" link dynamically ----------
+const gradeEl   = document.querySelector('select[name="grade"]');
+const termEl    = document.querySelector('select[name="term"]');
+const yearEl    = document.querySelector('input[name="year"]');
+const schoolEl  = document.querySelector('select[name="school_id"]');
+const addStudentLink = document.getElementById("addStudentLink");
+
+function updateAddStudentLink() {
+    const grade = gradeEl ? gradeEl.value : "";
+    const term  = termEl  ? termEl.value  : "";
+    const year  = yearEl  ? yearEl.value  : "";
+
+    if (grade && term && year) {
+        const params = new URLSearchParams({ grade, term, year });
+        if (schoolEl) params.set("school_id", schoolEl.value);
+        addStudentLink.href = "/add_student?" + params.toString();
+        addStudentLink.classList.remove("d-none");
+    } else {
+        addStudentLink.classList.add("d-none");
+    }
+}
+
+// Attach listeners
+if (gradeEl) gradeEl.addEventListener("change", updateAddStudentLink);
+if (termEl)  termEl.addEventListener("change", updateAddStudentLink);
+if (yearEl)  yearEl.addEventListener("input", updateAddStudentLink);
+if (schoolEl) schoolEl.addEventListener("change", updateAddStudentLink);
+
+// Also update on page load
+updateAddStudentLink();
+
+// ---------- Handle "added" query parameter (from redirect) ----------
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.get("added") === "1") {
+    const grade = urlParams.get("grade");
+    const term  = urlParams.get("term");
+    const year  = urlParams.get("year");
+    const school_id = urlParams.get("school_id") || "";
+
+    const query = new URLSearchParams({ grade, term, year, school_id }).toString();
+
+    document.getElementById("addAnotherBtn").href = "/add_student?" + query;
+    document.getElementById("proceedBtn").href = "/enter_marks?" + query;
+
+    // Show the modal
+    const modal = new bootstrap.Modal(document.getElementById("postAddModal"));
+    modal.show();
+
+    // Clean URL without reload
+    history.replaceState(null, "", window.location.pathname);
+}
+</script>
+{% endblock %}

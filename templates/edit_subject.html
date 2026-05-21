@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h2>Edit Subject</h2>
+<a href="{{ url_for('subjects') }}" class="text-decoration-none mb-3 d-inline-block">← Back to Subjects</a>
+<form method="POST" class="card p-4 shadow-sm">
+    <div class="mb-3">
+        <label>Subject Name</label>
+        <input type="text" name="name"
+               value="{{ subject.name }}"
+               class="form-control">
+    </div>
+
+    <button class="btn btn-success">Update</button>
+</form>
+{% endblock %}
