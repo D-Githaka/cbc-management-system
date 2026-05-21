@@ -172,9 +172,8 @@
         <a href="{{ url_for('students') }}" class="{{ 'active' if request.path.startswith('/student') }}"><i class="bi bi-people"></i> Students</a>
         <a href="{{ url_for('marks') }}" class="{{ 'active' if current == url_for('marks') }}"><i class="bi bi-pencil-square"></i> Marks</a>
         <a href="{{ url_for('schools') }}" class="{{ 'active' if current == url_for('schools') }}"><i class="bi bi-building"></i> Schools</a>
-        <a href="{{ url_for('add_school') }}"><i class="bi bi-plus-circle"></i> Add School</a>
-                <a href="{{ url_for('reports') }}" class="{{ 'active' if request.path == url_for('reports') }}">
-          <i class="bi bi-bar-chart"></i> Reports
+        <a href="{{ url_for('reports') }}" class="{{ 'active' if request.path == url_for('reports') }}">
+            <i class="bi bi-bar-chart"></i> Reports
         </a>
         {% if current_user.role == "admin" %}
         <a href="{{ url_for('manage_users') }}" class="{{ 'active' if current == url_for('manage_users') }}"><i class="bi bi-person-gear"></i> Manage Users</a>
