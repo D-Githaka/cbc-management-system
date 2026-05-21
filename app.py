@@ -52,13 +52,14 @@ def cbc_grade(score):
         return "BE"
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = '7438'
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024  # 2 MB
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['REMEMBER_COOKIE_DURATION'] = timedelta(days=7)
 app.config['SESSION_PERMANENT'] = False
-app.config['REMEMBER_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') == 'production'  # set True in production HTTPS
+app.config['REMEMBER_COOKIE_SECURE'] = True   # only over HTTPS
+app.config['SESSION_COOKIE_SECURE'] = True
 app.config['ADMIN_SECRET'] = os.environ.get('ADMIN_SECRET_KEY')
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 587
