@@ -30,3 +30,6 @@ Thumbs.db
 
 # Jupyter / notebooks
 .ipynb_checkpoints/
+
+logs/
+*.log
