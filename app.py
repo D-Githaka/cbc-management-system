@@ -256,16 +256,10 @@ def add_student():
         )
         db.session.add(student)
         db.session.commit()
-        return redirect(url_for(
-            'enter_marks',
-            added=1,
-            grade=request.form.get('grade'),
-            term=request.form.get('term'),
-            year=request.form.get('year'),
-            school_id=request.form.get('school_id')    # ← add this
-        ))
+        flash('Student added successfully.', 'success')
+        return redirect(url_for('students'))
     return render_template('add_student.html', schools=schools)
-
+    
 @app.route('/school_dashboard')
 @login_required
 def school_dashboard():
