@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Student Term Report</h2>
+<p><strong>Student:</strong> {{ student.name }} ({{ student.gender }})</p>
+<p><strong>School:</strong> {{ school.name }} &nbsp; <strong>Grade:</strong> {{ grade }}</p>
+<p><strong>Term:</strong> {{ term }} &nbsp; <strong>Year:</strong> {{ year }}</p>
+
+<div class="table-responsive">
+    <table class="table table-bordered table-sm">
+        <thead>
+            <tr>
+                <th>Subject</th>
+                {% for exam in exams %}
+                <th>{{ exam }}</th>
+                {% endfor %}
+                <th>Subject Average</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for subj in subject_names %}
+            <tr>
+                <td>{{ subj }}</td>
+                {% for ed in exam_data %}
+                <td>{{ ed.scores.get(subj, '-') }}</td>
+                {% endfor %}
+                <td>
+                    {% set scores = [] %}
+                    {% for ed in exam_data %}
+                        {% if ed.scores.get(subj) is not none %}
+                            {% set _ = scores.append(ed.scores[subj]) %}
+                        {% endif %}
+                    {% endfor %}
+                    {{ (scores|sum / scores|length)|round(1) if scores else '-' }}
+                </td>
+            </tr>
+            {% endfor %}
+            <!-- Total row -->
+            <tr class="table-secondary">
+                <td><strong>Total</strong></td>
+                {% for ed in exam_data %}
+                <td><strong>{{ ed.total }}</strong></td>
+                {% endfor %}
+                <td><strong>{{ avg_total }}</strong></td>
+            </tr>
+            <!-- Position row -->
+            <tr class="table-info">
+                <td><strong>Class Position</strong></td>
+                {% for ed in exam_data %}
+                <td>{{ ed.rank }} / {{ ed.class_size }}</td>
+                {% endfor %}
+                <td></td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+{% if overall_rank %}
+<p><strong>Overall Class Rank (by average total):</strong> {{ overall_rank }} / {{ overall_class_size }}</p>
+{% endif %}
+
+<button onclick="window.print()" class="btn btn-primary">🖨 Print Report</button>
+<a href="{{ url_for('reports.reports_student', school_id=school.id, grade=grade, term=term, year=year) }}" class="btn btn-secondary">← Back to Reports</a>
+{% endblock %}

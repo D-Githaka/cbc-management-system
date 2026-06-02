@@ -1,9 +1,18 @@
-from models import db, Subject
+from models import Subject
+from extensions import db
 
 def seed_subjects():
     subjects_by_grade = {
         "PP1": ["Language Activities", "Mathematical Activities", "Environmental Activities"],
-        # ... rest of your mapping
+        "PP2": ["Language Activities", "Mathematical Activities", "Environmental Activities"],
+        "Grade 1": ["Math", "English", "Kiswahili", "Environmental Activities"],
+        "Grade 2": ["Math", "English", "Kiswahili", "Environmental Activities"],
+        "Grade 3": ["Math", "English", "Kiswahili", "Science", "Social Studies"],
+        "Grade 4": ["Math", "English", "Kiswahili", "Science", "Social Studies"],
+        "Grade 5": ["Math", "English", "Kiswahili", "Science", "Social Studies"],
+        "Grade 6": ["Math", "English", "Kiswahili", "Science", "Social Studies"],
+        "Grade 7": ["Math", "English", "Kiswahili", "Integrated Science", "Social Studies"],
+        "Grade 8": ["Math", "English", "Kiswahili", "Integrated Science", "Social Studies"],
         "Grade 9": ["Math", "English", "Kiswahili", "Physics", "Chemistry", "Biology"]
     }
     if Subject.query.count() == 0:

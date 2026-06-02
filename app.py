@@ -1,56 +1,75 @@
-from flask import Flask, abort, render_template, request, redirect, jsonify, flash, url_for, send_file
-from models import db, School, Student, Subject, Mark, User
-from flask_login import LoginManager, login_user, login_required, logout_user, current_user, UserMixin
-from werkzeug.security import check_password_hash, generate_password_hash
-from datetime import timedelta
-from functools import wraps
-from flask_mail import Mail, Message
-from sqlalchemy.orm import joinedload
-from werkzeug.security import generate_password_hash as _generate_password_hash
-from seed import seed_subjects
-from flask_migrate import Migrate
-from models import db
-from sqlalchemy import func, case
-import pandas as pd
-import io
 import os
+import click
 import random
 import string
-import click
+import logging
+import traceback
 import functools
-import csv
+from datetime import timedelta
+from logging.handlers import RotatingFileHandler
+from flask_login import login_required, current_user, login_user, logout_user
+from flask import (Flask, abort, render_template, request, redirect,
+                   flash, url_for, send_file, g, has_request_context)
+from werkzeug.security import check_password_hash, generate_password_hash as _generate_password_hash
+from sqlalchemy.orm import joinedload
+from sqlalchemy import event
+
+from models import School, Student, Subject, Mark, User
+from seed import seed_subjects
+from extensions import db, migrate, cache, login_manager, mail
+from config import Config 
 
 generate_password_hash = functools.partial(_generate_password_hash, method="pbkdf2:sha256")
 
-def role_required(role):
-    def wrapper(fn):
-        @wraps(fn)
-        def decorated_view(*args, **kwargs):
-            if not current_user.is_authenticated:
-                return login_manager.unauthorized()
+def create_app():
+    app = Flask(__name__)
+    app.config.from_object(Config)
 
-            if current_user.role != role:
-                abort(403)
+    # Create logs directory
+    logs_dir = os.path.join(os.path.dirname(__file__), 'logs')
+    os.makedirs(logs_dir, exist_ok=True)
 
-            return fn(*args, **kwargs)
-        return decorated_view
-    return wrapper
+    # ---- Audit Logger (database changes) ----
+    audit_logger = logging.getLogger('audit')
+    audit_logger.setLevel(logging.INFO)
+    audit_handler = RotatingFileHandler(
+        os.path.join(logs_dir, 'audit.log'),
+        maxBytes=1024 * 1024, backupCount=10
+    )
+    audit_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+    audit_logger.addHandler(audit_handler)
 
-def cbc_grade(score):
-    try:
-        score = float(score)
-    except:
-        return None
+    # ---- Login Logger ----
+    login_logger = logging.getLogger('login')
+    login_logger.setLevel(logging.INFO)
+    login_handler = RotatingFileHandler(
+        os.path.join(logs_dir, 'login.log'),
+        maxBytes=1024 * 1024, backupCount=5
+    )
+    login_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+    login_logger.addHandler(login_handler)
 
-    if score >= 75:
-        return "EE"
-    elif score >= 50:
-        return "ME"
-    elif score >= 30:
-        return "AE"
-    else:
-        return "BE"
+    # ---- Error Logger ----
+    error_logger = logging.getLogger('error')
+    error_logger.setLevel(logging.ERROR)
+    error_handler = RotatingFileHandler(
+        os.path.join(logs_dir, 'error.log'),
+        maxBytes=1024 * 1024, backupCount=5
+    )
+    error_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+    error_logger.addHandler(error_handler)
+    cache_dir = os.path.join(os.path.dirname(__file__), 'cache')
+    if not os.path.exists(cache_dir):
+        os.makedirs(cache_dir)
+    
+    db.init_app(app)
+    migrate.init_app(app, db)
+    cache.init_app(app)
+    mail.init_app(app)          # add this
+    login_manager.init_app(app)
+    login_manager.login_view = "login"
 
+<<<<<<< HEAD
 app = Flask(__name__)
 basedir = os.path.abspath(os.path.dirname(__file__))
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'database.db')
@@ -68,146 +87,203 @@ app.config['MAIL_USE_TLS'] = True
 app.config['MAIL_USERNAME'] = 'your_email@gmail.com'
 app.config['MAIL_PASSWORD'] = 'your_app_password'
 app.config['MAIL_DEFAULT_SENDER'] = 'your_email@gmail.com'
+=======
+    with app.app_context():
+        db.create_all()
+        seed_subjects()
+>>>>>>> 1856202 (Multi-exam support, reports overhaul, and blueprint refactor)
 
-mail = Mail(app)
-
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = "login"
-
-db.init_app(app)
-
-# Create DB
-
-with app.app_context():
-    db.create_all()
-    seed_subjects()
-
-migrate = Migrate(app, db)
-
-@app.cli.command('seed-demo')
-def seed_demo_command():
-    """Populate database with demo data (20 schools, 50 students/grade)."""
-    from seed_demo import seed_demo_data
-    seed_demo_data()
-
-def generate_password(length=8):
-    return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
+    from blueprints.reports import reports_bp
+    from blueprints.api import api_bp
+    from blueprints.marks import marks_bp
+    from blueprints.main import main_bp
+    app.register_blueprint(main_bp)
+    app.register_blueprint(reports_bp)
+    app.register_blueprint(api_bp)
+    app.register_blueprint(marks_bp)
 
 
-@app.route('/admin/users', methods=['GET', 'POST'])
-@login_required
-@role_required('admin')
-def manage_users():
+    @app.cli.command('seed-demo')
+    def seed_demo_command():
+        """Populate database with demo data (20 schools, 50 students/grade)."""
+        from seed_demo import seed_demo_data 
+        seed_demo_data()
 
-    schools = School.query.all()
+    def generate_password(length=8):
+        return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
-    if request.method == 'POST':
+    @app.before_request
+    def set_logged_user():
+        if current_user.is_authenticated:
+            g.user_id = current_user.id
+            g.username = current_user.username
+            g.user_role = current_user.role
+        else:
+            g.user_id = None
+            g.username = 'anonymous'
+            g.user_role = 'anonymous'
 
+
+    def log_insert(mapper, connection, target):
+        if has_request_context():
+            user_info = f"user:{g.username} ({g.user_role})"
+        else:
+            user_info = "user:system (seed)"
+        cols = [c.key for c in mapper.column_attrs]
+        values = {c: getattr(target, c) for c in cols}
+        audit_logger.info(f"{user_info} - INSERT {target.__class__.__name__} {values}")
+
+    def log_update(mapper, connection, target):
+        if has_request_context():
+            user_info = f"user:{g.username} ({g.user_role})"
+        else:
+            user_info = "user:system (seed)"
+        changes = []
+        for attr in mapper.column_attrs:
+            hist = attr.get_history(target, attr.key)
+            if hist.has_changes():
+                old = hist.deleted[0] if hist.deleted else None
+                new = hist.added[0] if hist.added else None
+                changes.append(f"{attr.key}: {old} -> {new}")
+        if changes:
+            audit_logger.info(f"{user_info} - UPDATE {target.__class__.__name__} id={target.id} changes: {', '.join(changes)}")
+
+    def log_delete(mapper, connection, target):
+        if has_request_context():
+            user_info = f"user:{g.username} ({g.user_role})"
+        else:
+            user_info = "user:system (seed)"
+        cols = [c.key for c in mapper.column_attrs]
+        values = {c: getattr(target, c) for c in cols}
+        audit_logger.info(f"{user_info} - DELETE {target.__class__.__name__} {values}")
+        
+    with app.app_context():
+
+        for cls in [User, School, Student, Subject, Mark]:
+            event.listen(cls, 'after_insert', log_insert)
+            event.listen(cls, 'after_update', log_update)
+            event.listen(cls, 'after_delete', log_delete)
+
+    @app.route('/admin/logs')
+    @login_required
+    def admin_logs():
+        if current_user.role != 'admin':
+            abort(403)
+
+        logs = []
+        for filename in os.listdir(logs_dir):
+            if filename.endswith('.log'):
+                filepath = os.path.join(logs_dir, filename)
+                size = os.path.getsize(filepath)
+                logs.append({'name': filename, 'size': size})
+        return render_template('admin_logs.html', logs=logs)
+
+    @app.route('/admin/logs/download/<filename>')
+    @login_required
+    def download_log(filename):
+        if current_user.role != 'admin':
+            abort(403)
+
+        safe_filename = os.path.basename(filename)   # security against directory traversal
+        filepath = os.path.join(logs_dir, safe_filename)
+        if not os.path.isfile(filepath):
+            abort(404)
+        return send_file(filepath, as_attachment=True, download_name=safe_filename, mimetype='text/plain')
+
+    @app.route('/admin/users', methods=['GET', 'POST'])
+    @login_required
+    def manage_users():
+        if current_user.role not in ['admin', 'principal']:
+            abort(403)
+
+        # ----- Build schools list (used by both GET and POST rendering) -----
+        if current_user.role == 'admin':
+            schools = School.query.all()
+        else:
+            schools = [School.query.get(current_user.school_id)]
+
+        # ----- GET: fetch the users that will be shown in the table -----
+        if request.method == 'GET':
+            if current_user.role == 'admin':
+                # Regular admin cannot see super admin accounts
+                if current_user.is_superadmin:
+                    users = User.query.filter(User.role != None).options(joinedload(User.school)).all()
+                else:
+                    users = User.query.filter(User.role != None, User.is_superadmin == False).options(joinedload(User.school)).all()
+            else:  # principal
+                users = User.query.filter_by(school_id=current_user.school_id, role='teacher').options(joinedload(User.school)).all()
+
+            return render_template("admin_users.html", schools=schools, users=users)
+
+        # ----- POST: create a new user -----
         username = request.form['username']
         role = request.form['role']
         school_id = request.form.get('school_id')
         school_id = int(school_id) if school_id else None
         grade = request.form.get('grade')
 
-        # -----------------------
-        # VALIDATION
-        # -----------------------
+        # Validation
+        # Principal can only create teacher accounts for their own school
+        if current_user.role == 'principal':
+            if role != 'teacher':
+                flash("Principal can only create teacher accounts.", "danger")
+                return redirect(url_for('manage_users'))
+            if school_id != current_user.school_id:
+                flash("You can only create teachers for your own school.", "danger")
+                return redirect(url_for('manage_users'))
+
         if role != "admin" and not school_id:
             flash("Please select a school.", "danger")
             return redirect(url_for('manage_users'))
-
         if role == "teacher" and not grade:
             flash("Grade is required for teachers.", "danger")
             return redirect(url_for('manage_users'))
 
-        # -----------------------
-        # AUTO PASSWORD
-        # -----------------------
+        # Auto‑generate password
         password_plain = generate_password()
-
         user = User(
             username=username,
-            password=generate_password_hash(password_plain, method="pbkdf2:sha256"),
+            password=generate_password_hash(password_plain),
             role=role,
             school_id=school_id if role != "admin" else None,
             grade=grade if role == "teacher" else None
         )
-
         db.session.add(user)
         db.session.commit()
 
-        return render_template(
-            "user_created.html",
-            username=username,
-            password=password_plain
-        )
-    users = User.query.filter(User.role != None).options(joinedload(User.school)).all()
+        return render_template("user_created.html", username=username, password=password_plain)
 
-    return render_template(
-        "admin_users.html",
-        schools=schools,
-        users=users
-    )
+    @app.route('/admin/users/delete/<int:id>', methods=['POST'])
+    @login_required
+    def delete_user(id):
+        if current_user.role not in ['admin', 'principal']:
+            abort(403)
 
-@login_manager.unauthorized_handler
-def unauthorized():
-    return redirect('/login')
+        target = db.session.get(User, id)
+        if not target:
+            flash('User not found.', 'danger')
+            return redirect(url_for('manage_users'))
 
-@login_manager.user_loader
-def load_user(user_id):
-    return db.session.get(User, int(user_id))
+        # ---------- Super admin cannot be deleted ----------
+        if target.is_superadmin:
+            flash('The super admin account cannot be deleted.', 'danger')
+            return redirect(url_for('manage_users'))
 
-@app.errorhandler(403)
-def forbidden(e):
-    return render_template('error.html',
-                           error_title="Access Denied",
-                           error_message="You don't have permission to access this page."), 403
+        # ---------- Self‑deletion prevention ----------
+        if target.id == current_user.id:
+            flash('You cannot delete your own account.', 'danger')
+            return redirect(url_for('manage_users'))
 
-# Home
-@app.route('/')
-@login_required
-def index():
-    schools_count = School.query.count()
-    students_count = Student.query.count()
-    subjects_count = Subject.query.count()
+        # ---------- Principal scope: only teachers in own school ----------
+        if current_user.role == 'principal':
+            if target.role != 'teacher' or target.school_id != current_user.school_id:
+                flash('You can only delete teachers from your own school.', 'danger')
+                return redirect(url_for('manage_users'))
 
-    return render_template(
-        'index.html',
-        schools_count=schools_count,
-        students_count=students_count,
-        subjects_count=subjects_count,
-    )
-@app.cli.command('create-admin')
-@click.argument('username')
-@click.argument('password')
-def create_admin_cli(username, password):
-    """Create an admin user."""
-    admin = User(
-        username=username,
-        password=generate_password_hash(password, method="pbkdf2:sha256"),
-        role="admin"
-    )
-    db.session.add(admin)
-    db.session.commit()
-    print(f"Admin '{username}' created.")
-# Schools
-
-@app.route('/schools')
-@login_required
-def schools():
-    schools = School.query.all()
-    return render_template('schools.html', schools=schools)
-
-# Add School
-@app.route('/add_school', methods=['GET', 'POST'])
-@login_required 
-def add_school():
-    if request.method == 'POST':
-        name = request.form['name']
-        type=request.form.get('type', 'Public')
-        db.session.add(School(name=name))
+        # Admin can delete any other admin, principal, teacher (except super admin, already caught)
+        db.session.delete(target)
         db.session.commit()
+<<<<<<< HEAD
         return redirect('/')
     return render_template('add_school.html')
 #Edit and delete School
@@ -766,523 +842,103 @@ def save_marks():
             year=year
         ).first()
 
+=======
+        flash(f"User '{target.username}' deleted.", 'success')
+        return redirect(url_for('manage_users'))
+
+    @login_manager.unauthorized_handler
+    def unauthorized():
+        return redirect('/login')
+
+    @login_manager.user_loader
+    def load_user(user_id):
+        return db.session.get(User, int(user_id))
+
+    @app.errorhandler(403)
+    def forbidden(e):
+        return render_template('error.html',
+                               error_title="Access Denied",
+                               error_message="You don't have permission to access this page."), 403
+
+    @app.cli.command('create-super-admin')
+    @click.argument('username')
+    @click.argument('password')
+    def create_super_admin(username, password):
+        """Create a super admin user that cannot be deleted."""
+        existing = User.query.filter_by(username=username).first()
+>>>>>>> 1856202 (Multi-exam support, reports overhaul, and blueprint refactor)
         if existing:
-            existing.score = score
-            existing.cbc_level = grade_level
+            existing.is_superadmin = True
+            db.session.commit()
+            print(f"User '{username}' is now super admin.")
         else:
-            db.session.add(Mark(
-                student_id=student.id,
-                subject_id=int(subject_id),
-                score=score,
-                term=term,
-                year=year,
-                cbc_level=grade_level
-            ))
+            admin = User(
+                username=username,
+                password=generate_password_hash(password),
+                role="admin",
+                is_superadmin=True
+            )
+            db.session.add(admin)
+            db.session.commit()
+            print(f"Super admin '{username}' created.")
 
-    try:
+    @app.cli.command('create-admin')
+    @click.argument('username')
+    @click.argument('password')
+    def create_admin_cli(username, password):
+        """Create an admin user."""
+        admin = User(
+            username=username,
+            password=generate_password_hash(password, method="pbkdf2:sha256"),
+            role="admin"
+        )
+        db.session.add(admin)
         db.session.commit()
-        return jsonify({"status": "success"})
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": "Database error"}), 500
-
-@app.route('/edit_student/<int:id>', methods=['GET', 'POST'])
-@login_required
-def edit_student(id):
-    student = Student.query.get_or_404(id)
-    schools = School.query.all()
-
-    if request.method == 'POST':
-        student.name = request.form['name']
-        student.grade = request.form['grade']
-        student.school_id = request.form['school_id']
-
-        db.session.commit()
-        return redirect('/')
-
-    return render_template('edit_student.html', student=student, schools=schools)
-
-@app.route('/delete_student/<int:id>')
-@login_required
-def delete_student(id):
-    student = Student.query.get_or_404(id)
-
-    # optional: delete marks too
-    Mark.query.filter_by(student_id=student.id).delete()
-
-    db.session.delete(student)
-    db.session.commit()
-
-    return redirect('/')
-
-#Student Profile Route
-
-@app.route('/student/<int:student_id>')
-@login_required
-def student_profile(student_id):
-    student = Student.query.get_or_404(student_id)
-    term = request.args.get('term')
-    year = request.args.get('year')
-    
-    query = db.session.query(
-        Subject.name.label("subject"),
-        Mark.score.label("score"),
-        Mark.term,
-        Mark.year
-    ).join(Mark, Mark.subject_id == Subject.id)\
-     .filter(Mark.student_id == student_id)
-    
-    if term:
-        query = query.filter(Mark.term == term)
-    if year:
-        try:
-            query = query.filter(Mark.year == int(year))
-        except ValueError:
-            pass
-    
-    results = query.all()
-
-    data = [
-        {
-            "subject": r.subject,
-            "score": r.score,
-            "term": r.term,
-            "year": r.year
-        }
-        for r in results
-    ]
-
-    terms_years = db.session.query(Mark.term, Mark.year).filter(Mark.student_id == student_id).distinct().all()
-    
-    return render_template('student_profile.html', student=student, data=data, terms_years=terms_years, selected_term=term, selected_year=year)
-
-# Quick Student List
-
-@app.route('/students')
-@login_required
-def students():
-    students = Student.query.all()
-    return render_template('students.html', students=students)
-
-#Subjects
-
-@app.route('/subjects')
-def subjects():
-    grade = request.args.get('grade')
-
-    if grade:
-        subjects = Subject.query.filter_by(grade=grade).all()
-    else:
-        subjects = Subject.query.all()
-
-    return render_template('subjects.html', subjects=subjects, grade=grade)
-
-# Edit Subjects
-
-@app.route('/edit_subject/<int:id>', methods=['GET', 'POST'])
-@login_required
-def edit_subject(id):
-    subject = Subject.query.get_or_404(id)
-
-    if request.method == 'POST':
-        subject.name = request.form['name']
-        db.session.commit()
-        return redirect('/subjects')
-
-    return render_template('edit_subject.html', subject=subject)
-
-# Delete Subjects
-
-@app.route('/delete_subject/<int:id>')
-@login_required
-def delete_subject(id):
-    subject = Subject.query.get_or_404(id)
-
-    # ⚠️ IMPORTANT: delete related marks
-    Mark.query.filter(Mark.subject_id == subject.id).delete()
-
-    db.session.delete(subject)
-    db.session.commit()
-
-    return redirect('/subjects')
-
-#Login
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-
-        user = User.query.filter_by(
-            username=request.form['username']
-        ).first()
-
-        if user and check_password_hash(user.password, request.form['password']):
-
-            remember = True if request.form.get('remember') else False
-            login_user(user, remember=remember)
-
-            flash("Login successful", "success")
-
-            next_page = request.args.get('next')
-            return redirect(next_page or url_for('index'))
-
-        flash("Invalid username or password", "danger")
-        return redirect(url_for('login'))
-
-    return render_template("login.html")
-
-# Dashboard Analytics
-
-@app.route('/analytics')
-@login_required
-def analytics():
-    schools = School.query.all()
-
-    return render_template(
-        "analytics.html",
-        schools=schools,
-        grades=[
-            "PP1","PP2","Grade 1","Grade 2","Grade 3","Grade 4","Grade 5",
-            "Grade 6","Grade 7","Grade 8","Grade 9"
-        ]
-    )
-
-# APIs
-
-@app.route('/api/analytics')
-@login_required
-def api_analytics():
-    grade = request.args.get('grade')
-    school_id = request.args.get('school_id')
-    student_id = request.args.get('student_id')
-    year = request.args.get('year')
-    term = request.args.get('term')
-    
-    if current_user.role != "admin":
-        school_id = current_user.school_id
-    else:
-        school_id = request.args.get('school_id')
-
-    query = db.session.query(
-        Subject.name.label("subject"),
-        Student.grade.label("grade"),
-        School.name.label("school"),
-        Student.id.label("student_id"),
-        Student.name.label("student_name"),
-        db.func.avg(Mark.score).label("avg_score")
-    ).select_from(Mark)\
-     .join(Subject, Mark.subject_id == Subject.id)\
-     .join(Student, Mark.student_id == Student.id)\
-     .join(School, Student.school_id == School.id)
-
-    # Convert IDs to integers
-    if school_id:
-        query = query.filter(School.id == int(school_id))
-
-    if grade:
-        query = query.filter(Student.grade == grade)
-
-    if student_id:
-        query = query.filter(Student.id == int(student_id))
-
-    # Convert Year to integer
-    if year:
-        try:
-            query = query.filter(Mark.year == int(year))
-        except ValueError:
-            pass # Ignore if the user typed "Twenty Twenty Four" by accident
-
-    if term:
-        query = query.filter(Mark.term == term)
-
-    results = query.group_by(
-        Subject.name,
-        Student.grade,
-        School.name,
-        Student.id,
-        Student.name
-    ).all()
-
-    data = [
-        {
-            "subject": r.subject,
-            "grade": r.grade,
-            "school": r.school,
-            "student_id": r.student_id,
-            "student_name": r.student_name,
-            "avg_score": float(r.avg_score)
-        }
-        for r in results
-    ]
-
-    # Return data with headers to prevent the browser from caching old data
-    response = jsonify({"data": data})
-    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-    return response
-
-@app.route('/api/grades')
-@login_required
-def get_grades():
-    if current_user.role != "admin":
-        school_id = current_user.school_id
-    else:
-        school_id = request.args.get('school_id')
-
-    query = db.session.query(Student.grade).distinct()
-
-    if school_id:
-        query = query.filter(Student.school_id == school_id)
-
-    grades = [g[0] for g in query.all()]
-
-    return {"grades": grades}
-
-@app.route('/api/students')
-@login_required
-def get_students():
-    if current_user.role != "admin":
-        school_id = current_user.school_id
-    else:
-        school_id = request.args.get('school_id')
-
-    grade = request.args.get('grade')
-
-    query = Student.query
-
-    if school_id:
-        query = query.filter(Student.school_id == school_id)
-
-    if grade:
-        query = query.filter(Student.grade == grade)
-
-    students = query.all()
-
-    return {
-        "students": [
-            {"id": s.id, "name": s.name}
-            for s in students
-        ]
-    }
-@app.route('/api/school_overview')
-@login_required
-def api_school_overview():
-    school_id = request.args.get('school_id')
-    year = request.args.get('year')
-    term = request.args.get('term')
-
-    # Restrict non‑admin users to their own school
-    if current_user.role != "admin":
-        school_id = current_user.school_id
-
-    if not school_id:
-        return jsonify({"error": "school_id required"}), 400
-
-    query = db.session.query(
-        func.avg(Mark.score).label('avg_score'),
-        func.count(func.distinct(Student.id)).label('student_count')
-    ).select_from(Mark)\
-     .join(Student, Mark.student_id == Student.id)\
-     .filter(Student.school_id == int(school_id))
-
-    if term:
-        query = query.filter(Mark.term == term)
-    if year:
-        try:
-            query = query.filter(Mark.year == int(year))
-        except ValueError:
-            pass
-
-    result = query.first()
-    avg = round(result.avg_score, 2) if result.avg_score else 0
-    students = result.student_count if result.student_count else 0
-
-    return jsonify({
-        "avg_score": avg,
-        "student_count": students
-    })
-# Reports
-
-@app.route('/reports')
-@login_required
-def reports():
-    # Access control
-    if current_user.role not in ['admin', 'principal', 'teacher']:
-        abort(403)
-
-    selected_term = request.args.get('term', 'Term 1')
-    selected_year = request.args.get('year', None)
-
-    if current_user.role == 'admin':
-        school_id = request.args.get('school_id')
-        grade = request.args.get('grade')
-    elif current_user.role == 'principal':
-        school_id = current_user.school_id
-        grade = request.args.get('grade')
-    else:  # teacher
-        school_id = current_user.school_id
-        grade = current_user.grade
-
-    # === 1. Schools per grade averages (unchanged) ===
-    school_query = db.session.query(
-        School.name.label('school_name'),
-        School.type.label('school_type'),
-        Student.grade.label('grade'),
-        func.avg(Mark.score).label('avg_score'),
-        func.count(func.distinct(Student.id)).label('student_count')
-    ).select_from(Mark)\
-     .join(Student, Mark.student_id == Student.id)\
-     .join(School, Student.school_id == School.id)
-
-    if selected_term:
-        school_query = school_query.filter(Mark.term == selected_term)
-    if selected_year:
-        try:
-            year_int = int(selected_year)
-            school_query = school_query.filter(Mark.year == year_int)
-        except ValueError:
-            year_int = None
-    if school_id:
-        school_query = school_query.filter(School.id == int(school_id))
-    if grade:
-        school_query = school_query.filter(Student.grade == grade)
-
-    school_results = school_query.group_by(
-        School.name, School.type, Student.grade
-    ).order_by(Student.grade, func.avg(Mark.score).desc()).all()
-
-    # === 2. Top Male / Female per grade (by TOTAL marks, not average) ===
-    top_n = 3
-    top_male = []
-    top_female = []
-
-    # Build grades list
-    if grade is None:
-        grades = "Grade 9"
-    else:
-        grade_query = db.session.query(Student.grade).join(Mark)
-        if school_id:
-            grade_query = grade_query.filter(Student.school_id == int(school_id))
-        if selected_term:
-            grade_query = grade_query.filter(Mark.term == selected_term)
-        if selected_year:
-            grade_query = grade_query.filter(Mark.year == int(selected_year))
-        grades = [g[0] for g in grade_query.distinct().all()]
-
-    for g in grades:
-        for gen, target_list in [('M', top_male), ('F', top_female)]:
-            # Subquery to calculate total marks per student
-            sub = db.session.query(
-                Student.id,
-                func.sum(Mark.score).label('total_score')
-            ).join(Mark, Student.id == Mark.student_id)\
-             .filter(Student.grade == g, Student.gender == gen)
-
-            if school_id:
-                sub = sub.filter(Student.school_id == int(school_id))
-            if selected_term:
-                sub = sub.filter(Mark.term == selected_term)
-            if selected_year:
-                sub = sub.filter(Mark.year == int(selected_year))
-
-            sub = sub.group_by(Student.id).order_by(func.sum(Mark.score).desc()).limit(top_n).subquery()
-
-            result = db.session.query(
-                Student.id.label('student_id'),
-                Student.name.label('student_name'),
-                Student.grade.label('grade'),
-                Student.gender.label('gender'),
-                sub.c.total_score
-            ).join(sub, Student.id == sub.c.id).all()
-
-            for row in result:
-                target_list.append({
-                    'grade': row.grade,
-                    'student_id': row.student_id,
-                    'student_name': row.student_name,
-                    'gender': row.gender,
-                    'total_score': row.total_score
-                })
-
-    # === 3. Student Total Marks (sum across all subjects) for each student ===
-    student_total_query = db.session.query(
-        Student.id,
-        Student.name,
-        Student.grade,
-        Student.gender,
-        func.sum(Mark.score).label('total_score')
-    ).join(Mark, Student.id == Mark.student_id)
-
-    if selected_term:
-        student_total_query = student_total_query.filter(Mark.term == selected_term)
-    if selected_year:
-        student_total_query = student_total_query.filter(Mark.year == int(selected_year))
-    if school_id:
-        student_total_query = student_total_query.filter(Student.school_id == int(school_id))
-    if grade:
-        student_total_query = student_total_query.filter(Student.grade == grade)
-
-    student_totals = student_total_query.group_by(Student.id).order_by(Student.grade, func.sum(Mark.score).desc()).all()
-    student_total_list = [
-        {
-            'student_id': r.id,
-            'student_name': r.name,
-            'grade': r.grade,
-            'gender': r.gender,
-            'total_score': r.total_score
-        } for r in student_totals
-    ]
-
-    # === 4. Class Subject Averages (average score per subject across all filtered students) ===
-    class_avg_query = db.session.query(
-        Subject.name.label('subject_name'),
-        func.avg(Mark.score).label('avg_score')
-    ).select_from(Mark)\
-     .join(Subject, Mark.subject_id == Subject.id)\
-     .join(Student, Mark.student_id == Student.id)
-
-    if selected_term:
-        class_avg_query = class_avg_query.filter(Mark.term == selected_term)
-    if selected_year:
-        class_avg_query = class_avg_query.filter(Mark.year == int(selected_year))
-    if school_id:
-        class_avg_query = class_avg_query.filter(Student.school_id == int(school_id))
-    if grade:
-        class_avg_query = class_avg_query.filter(Student.grade == grade)
-
-    class_avg_results = class_avg_query.group_by(Subject.name).order_by(func.avg(Mark.score).desc()).all()
-    class_subject_averages = [
-        {'subject_name': r.subject_name, 'avg_score': round(r.avg_score, 2)}
-        for r in class_avg_results
-    ]
-
-    # Metadata for template
-    schools = School.query.all() if current_user.role == 'admin' else []
-    all_grades = ["PP1","PP2","Grade 1","Grade 2","Grade 3","Grade 4","Grade 5",
-                  "Grade 6","Grade 7","Grade 8","Grade 9"]
-    terms = ["Term 1","Term 2","Term 3"]
-
-    return render_template(
-        'reports.html',
-        school_results=school_results,
-        top_male=top_male,
-        top_female=top_female,
-        student_total_list=student_total_list,
-        class_subject_averages=class_subject_averages,
-        selected_term=selected_term,
-        selected_year=selected_year,
-        schools=schools,
-        grades=all_grades,
-        terms=terms
-    )
-
-# Logout
-
-@app.route('/logout')
-@login_required
-def logout():
-    logout_user()
-    return redirect('/login')
-
+        print(f"Admin '{username}' created.")
+
+    #Login
+
+    @app.route('/login', methods=['GET', 'POST'])
+    def login():
+        if request.method == 'POST':
+            username = request.form['username']
+            user = User.query.filter_by(username=username).first()
+
+            if user and check_password_hash(user.password, request.form['password']):
+                remember = True if request.form.get('remember') else False
+                login_user(user, remember=remember)
+                login_logger.info(f"Login SUCCESS: user {user.username} (role {user.role}) from IP {request.remote_addr}")
+                flash("Login successful", "success")
+                next_page = request.args.get('next')
+                return redirect(next_page or url_for('main.index'))
+            else:
+                login_logger.warning(f"Login FAILURE: username '{username}' from IP {request.remote_addr}")
+                flash("Invalid username or password", "danger")
+                return redirect(url_for('login'))
+
+        return render_template("login.html")
+
+    # Logout
+
+    @app.route('/logout')
+    @login_required
+    def logout():
+        logout_user()
+        return redirect('/login')
+
+    @app.errorhandler(Exception)
+    def log_exception(e):
+        error_logger.error(
+            f"Unhandled exception: {e}\n"
+            f"Request: {request.method} {request.path}\n"
+            f"User: {g.username}\n"
+            f"{traceback.format_exc()}"
+        )
+        return render_template('error.html',
+                               error_title="Internal Server Error",
+                               error_message="An unexpected error occurred. The error has been logged."), 500
+    return app
 
 if __name__ == '__main__':
+    app = create_app()
     app.run(debug=True)

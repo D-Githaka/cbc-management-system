@@ -2,7 +2,7 @@
 
 {% block content %}
 <h2>Enter Marks</h2>
-<a href="{{ url_for('marks') }}" class="text-decoration-none mb-3 d-inline-block">← Back to Marks</a>
+<a href="{{ url_for('marks.marks') }}" class="text-decoration-none mb-3 d-inline-block">← Back to Marks</a>
 <!-- Grade Selector -->
 <div class="toast-container position-fixed bottom-0 end-0 p-3">
   <div id="saveToast" class="toast align-items-center text-white bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
@@ -32,7 +32,14 @@
             {% endfor %}
         </select>
     </div>
-
+    <div class="col">
+        <select name="exam" class="form-select">
+            <option value="">Select Exam</option>
+            <option value="Exam 1" {% if exam == 'Exam 1' %}selected{% endif %}>Exam 1</option>
+            <option value="Exam 2" {% if exam == 'Exam 2' %}selected{% endif %}>Exam 2</option>
+            <option value="Exam 3" {% if exam == 'Exam 3' %}selected{% endif %}>Exam 3</option>
+        </select>
+    </div>
     <div class="col">
         <input type="number" name="year" class="form-control"
                placeholder="Year" value="{{ year }}">
@@ -268,6 +275,7 @@ async function flushSaveQueue() {
 
         const term = getMeta("term");
         const year = getMeta("year");
+        const exam = getMeta("exam");
         const grade = getMeta("grade");
         const school_id = getMeta("school_id");
 
@@ -290,6 +298,7 @@ async function flushSaveQueue() {
                         grade: grade,
                         term: term,
                         year: year,
+                        exam: exam,
                         marks: marks,
                         school_id: school_id,
                     })

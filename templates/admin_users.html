@@ -5,6 +5,10 @@
 {% endif %}
 <h2 class="mb-4">👨‍💼 User Management</h2>
 
+{% if current_user.role == 'principal' %}
+    <p>Managing teachers for <strong>{{ schools[0].name if schools else 'your school' }}</strong></p>
+{% endif %}
+
 <div class="row">
     <div class="col-lg-5">
         <div class="card p-3 shadow-sm">
@@ -13,16 +17,32 @@
                 <input name="username" class="form-control mb-2" placeholder="Username" required>
                 <select name="role" id="roleSelect" class="form-control mb-2" required>
                     <option value="">Select Role</option>
-                    <option value="principal">Principal</option>
-                    <option value="teacher">Teacher</option>
+                    {% if current_user.role == 'admin' %}
                     <option value="admin">Admin</option>
+                    <option value="principal">Principal</option>
+
+                    {% endif %}
+                    {% if current_user.role == 'principal' %}
+                    <option value="teacher" selected>Teacher</option>
+                    {% else %}
+                    <option value="teacher">Teacher</option>
+                    {% endif %}
                 </select>
-                <select name="school_id" id="schoolSelect" class="form-control mb-2">
-                    <option value="">Select School</option>
-                    {% for s in schools %}
-                        <option value="{{ s.id }}">{{ s.name }}</option>
-                    {% endfor %}
+
+                <select name="school_id" class="form-control mb-2" 
+                    {% if current_user.role == 'principal' %} disabled{% endif %}>
+                    {% if current_user.role == 'principal' %}
+                        <option value="{{ schools[0].id }}" selected>{{ schools[0].name }}</option>
+                    {% else %}
+                        <option value="">Select School</option>
+                        {% for s in schools %}
+                            <option value="{{ s.id }}">{{ s.name }}</option>
+                        {% endfor %}
+                    {% endif %}
                 </select>
+                {% if current_user.role == 'principal' %}
+                <input type="hidden" name="school_id" value="{{ schools[0].id }}">
+                {% endif %}
                 <select name="grade" id="gradeSelect" class="form-control mb-2 d-none">
                     <option value="">Select Grade</option>
                     {% for g in ["Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9"] %}
@@ -43,15 +63,31 @@
                         <th>Role</th>
                         <th>School</th>
                         <th>Grade</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for u in users %}
                     <tr>
-                        <td>{{ u.username }}</td>
+                        <td>
+                            {{ u.username }}
+                            {% if u.is_superadmin %}
+                                <span class="badge bg-warning text-dark">Super Admin</span>
+                            {% endif %}
+                        </td>
                         <td>{{ u.role }}</td>
                         <td>{{ u.school.name if u.school else "-" }}</td>
                         <td>{{ u.grade or "-" }}</td>
+                        <td>
+                            {% if u.id != current_user.id and not u.is_superadmin %}
+                            <form action="{{ url_for('delete_user', id=u.id) }}" method="POST" style="display:inline;">
+                                <button type="submit" class="btn btn-sm btn-danger"
+                                   onclick="return confirm('Delete user {{ u.username }}?')">
+                                   Delete
+                                </button>
+                            </form>
+                            {% endif %}
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -63,20 +99,30 @@
 <script>
 const roleSelect = document.getElementById("roleSelect");
 const gradeSelect = document.getElementById("gradeSelect");
-const schoolSelect = document.getElementById("schoolSelect");
+const schoolSelect = document.querySelector('select[name="school_id"]');   // might be null for principal
 
 roleSelect.addEventListener("change", () => {
     const role = roleSelect.value;
+
+    // Show grade dropdown only for teachers
     if (role === "teacher") {
-        gradeSelect.classList.remove("d-none");
+        if (gradeSelect) {
+            gradeSelect.classList.remove("d-none");
+        }
     } else {
-        gradeSelect.classList.add("d-none");
+        if (gradeSelect) {
+            gradeSelect.classList.add("d-none");
+        }
     }
-    if (role === "admin") {
-        schoolSelect.closest('.mb-2').classList.add("d-none");
-        schoolSelect.value = "";
-    } else {
-        schoolSelect.closest('.mb-2').classList.remove("d-none");
+
+    // Hide school dropdown for admins (and clear selection)
+    if (schoolSelect) {
+        if (role === "admin") {
+            schoolSelect.closest('.mb-2').classList.add("d-none");
+            schoolSelect.value = "";
+        } else {
+            schoolSelect.closest('.mb-2').classList.remove("d-none");
+        }
     }
 });
 </script>

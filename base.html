@@ -121,19 +121,24 @@
             z-index: 1000;
             transition: 0.3s;
         }
+
         .sidebar.active {
             left: 0;
         }
-    }
+        .ag-theme-alpine {
+          font-size: 12px;
+        }
 
     @media (max-width: 768px) {
         .ag-theme-alpine {
             font-size: 11px;
         }
+
         .ag-header-cell-label {
             white-space: normal !important;
             text-align: center;
         }
+    }
     }
     </style>
 </head>
@@ -148,21 +153,20 @@
         </button>
         {% endif %}
 
-        <a class="navbar-brand" href="{{ url_for('main.index') }}">CBC System</a>
+        <span class="navbar-brand">CBC System</span>
 
         <div class="ms-auto d-flex align-items-center gap-3 text-white">
             {% if current_user.is_authenticated %}
                 👤 {{ current_user.username }}
-                <a href="{{ url_for('logout') }}" class="btn btn-sm btn-outline-light">Logout</a>
+                <a href="/logout" class="btn btn-sm btn-outline-light">Logout</a>
             {% endif %}
         </div>
     </nav>
     <div class="layout">
-    <div id="sidebar" class="sidebar">    
+    <div id="sidebar" class="sidebar">
         <h4>CBC System</h4>
         <hr>
         {% set current = request.path %}
-<<<<<<< HEAD
         <a href="{{ url_for('analytics') }}" class="{{ 'active' if current == url_for('analytics') }}"><i class="bi bi-speedometer2"></i> Dashboard</a>
         <a href="{{ url_for('subjects') }}" class="{{ 'active' if current == url_for('subjects') }}"><i class="bi bi-journal-bookmark"></i> Subjects</a>
         <a href="{{ url_for('students') }}" class="{{ 'active' if request.path.startswith('/student') }}"><i class="bi bi-people"></i> Students</a>
@@ -172,37 +176,17 @@
             <i class="bi bi-bar-chart"></i> Reports
         </a>
         {% if current_user.role == "admin" %}
-=======
-        <a href="{{ url_for('main.analytics') }}" class="{{ 'active' if current == url_for('main.analytics') }}"><i class="bi bi-speedometer2"></i> Dashboard</a>
-        <a href="{{ url_for('main.subjects') }}" class="{{ 'active' if current == url_for('main.subjects') }}"><i class="bi bi-journal-bookmark"></i> Subjects</a>
-        <a href="{{ url_for('main.students') }}" class="{{ 'active' if request.path.startswith('/student') }}"><i class="bi bi-people"></i> Students</a>
-        
-        <a href="{{ url_for('marks.marks') }}" class="{{ 'active' if current == url_for('marks.marks') }}"><i class="bi bi-pencil-square"></i> Marks</a>
-        
-        <a href="{{ url_for('main.schools') }}" class="{{ 'active' if current == url_for('main.schools') }}"><i class="bi bi-building"></i> Schools</a>
-        
-        <a href="{{ url_for('reports.reports_school') }}"><i class="bi bi-building"></i> School Reports</a>
-        <a href="{{ url_for('reports.reports_student') }}"><i class="bi bi-person-lines-fill"></i> Student Reports</a>
-        
-        {% if current_user.role in ['principal', 'admin'] %}
->>>>>>> 1856202 (Multi-exam support, reports overhaul, and blueprint refactor)
         <a href="{{ url_for('manage_users') }}" class="{{ 'active' if current == url_for('manage_users') }}"><i class="bi bi-person-gear"></i> Manage Users</a>
         {% endif %}
-        
         {% if current_user.role in ['principal', 'admin'] %}
-        <a href="{{ url_for('main.timetable_page') }}" class="{{ 'active' if request.path == url_for('main.timetable_page') }}">
+        <a href="{{ url_for('school_dashboard') }}"><i class="bi bi-speedometer"></i> School Dashboard</a>
+        <a href="{{ url_for('timetable_page') }}" class="{{ 'active' if request.path == url_for('timetable_page') }}">
             <i class="bi bi-calendar3"></i> Timetable Generator
         </a>
         {% endif %}
         {% if current_user.role in ['admin', 'principal', 'teacher'] %}
-        <a href="{{ url_for('main.upload_csv') }}" class="{{ 'active' if request.path == url_for('main.upload_csv') }}">
+        <a href="{{ url_for('upload_csv') }}" class="{{ 'active' if request.path == url_for('upload_csv') }}">
             <i class="bi bi-upload"></i> Upload CSV
-        </a>
-        {% endif %}
-        
-        {% if current_user.role == 'admin' %}
-        <a href="{{ url_for('admin_logs') }}" class="{{ 'active' if request.path == url_for('admin_logs') }}">
-            <i class="bi bi-journal-text"></i> System Logs
         </a>
         {% endif %}
     </div>

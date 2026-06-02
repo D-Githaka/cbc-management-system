@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>System Logs</h2>
+<table class="table table-sm">
+    <thead>
+        <tr>
+            <th>Log File</th>
+            <th>Size (bytes)</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for log in logs %}
+        <tr>
+            <td>{{ log.name }}</td>
+            <td>{{ log.size }}</td>
+            <td>
+                <a href="{{ url_for('download_log', filename=log.name) }}" class="btn btn-sm btn-primary">
+                    📥 Download
+                </a>
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="text-muted">No log files yet.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

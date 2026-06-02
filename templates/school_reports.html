@@ -1,0 +1,169 @@
+{% extends 'base.html' %}
+{% block content %}
+<div id="reportExportArea">
+    <h2>School Reports{% if school_name %} – {{ school_name }}{% endif %}</h2>
+
+    <!-- Filters -->
+    <form method="GET" class="row g-3 mb-4 align-items-end">
+        <div class="col-md-2">
+            <select name="term" class="form-select">
+                {% for t in terms %}
+                    <option value="{{ t }}" {% if t == selected_term %}selected{% endif %}>{{ t }}</option>
+                {% endfor %}
+            </select>
+        </div>
+<div class="col-md-2">
+    <select name="exam" class="form-select">
+        <option value="">All Exams</option>
+        {% for e in exams %}
+            <option value="{{ e }}" {% if exam == e %}selected{% endif %}>{{ e }}</option>
+        {% endfor %}
+    </select>
+</div>
+        <div class="col-md-2">
+            <select name="year" class="form-control">
+                <option value="">Year</option>
+                {% for y in range(2021, 2031) %}
+                    <option value="{{ y }}" {% if y|string == selected_year %}selected{% endif %}>{{ y }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% if current_user.role == 'admin' %}
+        <div class="col-md-2">
+            <select name="school_id" class="form-select" onchange="this.form.submit()">
+                <option value="">All Schools</option>
+                {% for s in schools %}
+                    <option value="{{ s.id }}" {% if request.args.get('school_id')|int == s.id %}selected{% endif %}>{{ s.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+        <div class="col-md-2">
+            <select name="grade" class="form-select" onchange="this.form.submit()">
+                <option value="">All Grades</option>
+                {% for g in grades %}
+                    <option value="{{ g }}" {% if request.args.get('grade') == g %}selected{% endif %}>{{ g }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <button class="btn btn-primary w-100">Filter</button>
+        </div>
+    </form>
+
+    <!-- ========== ALL SCHOOLS VIEW ========== -->
+    {% if all_schools %}
+        <div class="card p-3 shadow-sm mb-4">
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Position</th>
+                            <th>School</th>
+                            {% for subj in subjects %}
+                                <th>{{ subj }}</th>
+                            {% endfor %}
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in all_school_rows %}
+                        <tr>
+                            <td>{{ row.position }}</td>
+                            <td>{{ row.school_name }} ({{ row.school_type }})</td>
+                            {% for subj in subjects %}
+                                <td>{{ row.subjects.get(subj, '-') }}</td>
+                            {% endfor %}
+                            <td><strong>{{ row.total }}</strong></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    {% endif %}
+
+    <!-- ========== SINGLE SCHOOL VIEW ========== -->
+    {% if single_school %}
+        {% if grade %}
+            <!-- Student-level marks for a specific grade -->
+            <h3>{{ grade }}</h3>
+            <div class="card p-3 shadow-sm mb-4">
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered">
+                        <thead>
+                            <tr>
+                                <th>Student</th>
+                                {% for subj in subject_names %}
+                                    <th>{{ subj }}</th>
+                                {% endfor %}
+                                <th>Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for sd in student_data %}
+                            <tr>
+                                <td>{{ sd.name }} ({{ sd.gender }})</td>
+                                {% for subj in subject_names %}
+                                    <td>{{ sd.scores[subj] if sd.scores[subj] is not none else '-' }}</td>
+                                {% endfor %}
+                                <td><strong>{{ sd.total }}</strong></td>
+                            </tr>
+                            {% endfor %}
+                            <!-- Summary rows -->
+                            <tr class="table-secondary">
+                                <td><strong>Total</strong></td>
+                                {% for subj in subject_names %}
+                                    <td><strong>{{ totals_row[subj] }}</strong></td>
+                                {% endfor %}
+                                <td><strong>{{ grand_total }}</strong></td>
+                            </tr>
+                            <tr class="table-secondary">
+                                <td><strong>Average</strong></td>
+                                {% for subj in subject_names %}
+                                    <td><strong>{{ avg_row[subj] }}</strong></td>
+                                {% endfor %}
+                                <td><strong>{{ grand_avg }}</strong></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        {% else %}
+            <!-- Grade-level averages (no specific grade selected) -->
+            <div class="card p-3 shadow-sm mb-4">
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered">
+                        <thead>
+                            <tr>
+                                <th>Position</th>
+                                <th>Grade</th>
+                                {% for subj in all_subjects %}
+                                    <th>{{ subj }}</th>
+                                {% endfor %}
+                                <th>Total Avg</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in grade_averages %}
+                            <tr>
+                                <td>{{ row.position }}</td>
+                                <td>{{ row.grade }}</td>
+                                {% for subj in all_subjects %}
+                                    <td>{{ row.averages[subj] }}</td>
+                                {% endfor %}
+                                <td><strong>{{ row.total }}</strong></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        {% endif %}
+    {% endif %}
+</div>
+
+<a href="{{ url_for('reports.reports_school_excel', **request.args) }}" class="btn btn-success mt-3">
+    📥 Download Excel Report
+</a>
+{% endblock %}

@@ -3,27 +3,35 @@
 
 <h2>Schools</h2>
 
-<a href="{{ url_for('add_school') }}" class="btn btn-primary mb-3">Add School</a>
+{% if current_user.role == 'admin' %}
+<a href="{{ url_for('main.add_school') }}" class="btn btn-primary mb-3">Add School</a>
+{% endif %}
 
 <table class="table table-striped">
     <thead>
         <tr>
             <th>Name</th>
+            <th>Type</th>
             <th>Students</th>
+            <th>Actions</th>
         </tr>
     </thead>
     <tbody>
     {% for school in schools %}
         <tr>
             <td>
-                <a href="{{ url_for('analytics', school_id=school.id) }}">{{ school.name }}</a>
+                <a href="{{ url_for('main.analytics', school_id=school.id) }}">{{ school.name }}</a>
             </td>
+            <td>{{ school.type }}</td>
             <td>{{ school.students|length }}</td>
             <td>
-                {% if current_user.role == 'admin' %}
-                <a href="{{ url_for('edit_school', id=school.id) }}" class="btn btn-sm btn-warning">Edit</a>
-                <a href="{{ url_for('delete_school', id=school.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Delete this school?')">Delete</a>
-                {% endif %}
+                <div class="btn-group" role="group">
+                    <a href="{{ url_for('main.school_dashboard', school_id=school.id) }}" class="btn btn-sm btn-outline-primary">Dashboard</a>
+                    {% if current_user.role == 'admin' %}
+                    <a href="{{ url_for('main.edit_school', id=school.id) }}" class="btn btn-sm btn-warning">Edit</a>
+                    <a href="{{ url_for('main.delete_school', id=school.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Delete this school?')">Delete</a>
+                    {% endif %}
+                </div>
             </td>
         </tr>
     {% endfor %}

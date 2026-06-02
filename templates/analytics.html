@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block content %}
 <div id="analyticsExportArea">
-<h2>Admin Analytics Dashboard</h2>
+<h2>Analytics Dashboard</h2>
 
 <!-- FILTER PANEL -->
 <div class="card p-4 mb-3 shadow-sm">
@@ -18,15 +18,25 @@
                 </select>
             </div>
 
-            <!-- GRADE (no default option, populated by JS, defaults to Grade 9) -->
-            <div class="col-md-3">
+            <!-- GRADE -->
+            <div class="col-md-2">
                 <select name="grade" id="gradeSelect" class="form-control" required>
                     <!-- filled dynamically -->
                 </select>
             </div>
 
+            <!-- EXAM (new) -->
+            <div class="col-md-2">
+                <select name="exam" id="examSelect" class="form-control">
+                    <option value="">All Exams</option>
+                    <option value="Exam 1">Exam 1</option>
+                    <option value="Exam 2">Exam 2</option>
+                    <option value="Exam 3">Exam 3</option>
+                </select>
+            </div>
+
             <!-- YEAR -->
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <select name="year" class="form-control">
                     <option value="">Year</option>
                     {% for y in range(2021, 2031) %}
@@ -36,7 +46,7 @@
             </div>
 
             <!-- TERM -->
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <select name="term" class="form-control">
                     <option value="">Term</option>
                     <option value="Term 1">Term 1</option>
@@ -59,6 +69,7 @@
     </div>
     <p>Updating analytics...</p>
 </div>
+
 <!-- SCHOOL OVERALL PERFORMANCE (ALL GRADES) -->
 <div class="row mb-3">
     <div class="col-md-6 offset-md-3">
@@ -69,6 +80,7 @@
         </div>
     </div>
 </div>
+
 <!-- KPI CARDS (always visible) -->
 <div class="row mb-3">
     <div class="col-md-4">
@@ -97,16 +109,11 @@
     <div class="d-flex flex-wrap gap-2">
         {% for g in grades %}
         <a class="btn btn-outline-primary btn-sm {% if request.args.get('grade') == g %}active{% endif %}"
-           href="{{ url_for('analytics', school_id=request.args.get('school_id'), grade=g) }}">
+           href="{{ url_for('main.analytics', school_id=request.args.get('school_id'), grade=g) }}">
             {{ g }}
         </a>
         {% endfor %}
     </div>
-</div>
-
-<div class="card p-4 mb-3 shadow-sm">
-    <h5>Students</h5>
-    <ul class="list-group" id="studentList"></ul>
 </div>
 
 <!-- CHARTS -->
@@ -116,7 +123,7 @@
 </div>
 
 <div class="card p-4 shadow-sm">
-    <h5>Grade Comparison</h5>
+    <h5>School Comparison for Grade</h5>
     <div id="chart2"></div>
 </div>
 
@@ -136,6 +143,7 @@ class AnalyticsController {
         this.state = {
             school_id: "",
             grade: "Grade 9",
+            exam: "",
             year: "",
             term: ""
         };
@@ -145,6 +153,7 @@ class AnalyticsController {
 
         this.schoolSelect = document.getElementById("schoolSelect");
         this.gradeSelect = document.getElementById("gradeSelect");
+        this.examSelect = document.getElementById("examSelect");
         this.yearSelect = document.querySelector("[name='year']");
         this.termSelect = document.querySelector("[name='term']");
     }
@@ -156,12 +165,16 @@ class AnalyticsController {
         this.gradeSelect.addEventListener("change", e =>
             this.setState({ grade: e.target.value })
         );
+        this.examSelect.addEventListener("change", e =>
+            this.setState({ exam: e.target.value })
+        );
         document.getElementById("filterForm").addEventListener("submit", e => {
             e.preventDefault();
             const fd = new FormData(e.target);
             this.setState({
                 school_id: fd.get("school_id"),
                 grade: fd.get("grade") || "Grade 9",
+                exam: fd.get("exam") || "",
                 year: fd.get("year"),
                 term: fd.get("term")
             });
@@ -207,6 +220,7 @@ class AnalyticsController {
             const params = new URLSearchParams({
                 school_id: this.state.school_id,
                 grade: this.state.grade,
+                exam: this.state.exam,
                 year: this.state.year,
                 term: this.state.term
             }).toString();
@@ -216,10 +230,11 @@ class AnalyticsController {
             if (newHash !== this.lastDataHash) {
                 this.lastDataHash = newHash;
                 updateKPIs(json.data);
-                drawCharts(json.data);
-                renderStudents(json.data);
+                drawSubjectChart(json.data);
             }
             await this.fetchOverallSchoolAverage();
+            // Call the school comparison chart with the controller instance
+            await drawSchoolComparison(this);
         } catch (err) {
             console.error("Analytics error:", err);
         } finally {
@@ -238,6 +253,7 @@ class AnalyticsController {
         try {
             const params = new URLSearchParams({
                 school_id: this.state.school_id,
+                exam: this.state.exam,
                 year: this.state.year,
                 term: this.state.term
             }).toString();
@@ -255,6 +271,7 @@ class AnalyticsController {
         const params = new URLSearchParams(window.location.search);
         this.state.school_id = params.get("school_id") || "";
         this.state.grade = params.get("grade") || "Grade 9";
+        this.state.exam = params.get("exam") || "";
         this.state.year = params.get("year") || "";
         this.state.term = params.get("term") || "";
 
@@ -262,6 +279,7 @@ class AnalyticsController {
             this.state.school_id = this.schoolSelect.options[1].value;
         }
         this.schoolSelect.value = this.state.school_id;
+        this.examSelect.value = this.state.exam;
         this.yearSelect.value = this.state.year;
         this.termSelect.value = this.state.term;
 
@@ -274,7 +292,7 @@ class AnalyticsController {
         this.stopAutoRefresh();
         this.autoRefreshInterval = setInterval(() => {
             if (this.isTabActive) this.loadAnalytics();
-        }, 5000);
+        }, 90000);
     }
 
     stopAutoRefresh() {
@@ -282,7 +300,9 @@ class AnalyticsController {
     }
 }
 
-// Helper functions
+// ------------------------------------------------------------
+// Helper functions (now outside the class)
+// ------------------------------------------------------------
 function updateKPIs(data) {
     if (!data || data.length === 0) {
         document.getElementById("totalRecords").innerText = "0";
@@ -302,70 +322,94 @@ function updateKPIs(data) {
     document.getElementById("subjectCount").innerText = uniqueSubjects.size;
 }
 
-function renderStudents(data) {
-    const studentList = document.getElementById("studentList");
-    studentList.innerHTML = "";
-    if (!data || data.length === 0) {
-        studentList.innerHTML = "<li class='list-group-item text-muted'>No students found for these filters.</li>";
-        return;
-    }
-
-    const studentMap = new Map();
-    data.forEach(row => {
-        const id = row.student_id;
-        if (!studentMap.has(id)) {
-            studentMap.set(id, { name: row.student_name, totalScore: 0, count: 0 });
-        }
-        const s = studentMap.get(id);
-        s.totalScore += row.avg_score;
-        s.count += 1;
-    });
-
-    const students = Array.from(studentMap.entries()).map(([id, val]) => ({
-        id,
-        name: val.name,
-        avg: (val.totalScore / val.count).toFixed(2)
-    }));
-    students.sort((a, b) => b.avg - a.avg);
-
-    students.forEach(s => {
-        const li = document.createElement("li");
-        li.className = "list-group-item d-flex justify-content-between align-items-center";
-        li.innerHTML = `<a href="/student/${s.id}" class="text-decoration-none">${s.name}</a>
-                        <span class="badge bg-secondary">${s.avg}</span>`;
-        studentList.appendChild(li);
-    });
-}
-
-function drawCharts(data) {
+function drawSubjectChart(data) {
     if (!data || data.length === 0) {
         Plotly.purge("chart1");
-        Plotly.purge("chart2");
-        document.getElementById("chart1").innerHTML = "<div class='text-center text-muted p-5'>No data available for the selected filters.</div>";
-        document.getElementById("chart2").innerHTML = "";
+        document.getElementById("chart1").innerHTML = 
+            "<div class='text-center text-muted p-5'>No subject data for selected filters.</div>";
         return;
     }
     const subjectMap = {};
-    const gradeMap = {};
-    for (const d of data) {
-        if (!subjectMap[d.subject]) subjectMap[d.subject] = { sum: 0, count: 0 };
-        subjectMap[d.subject].sum += d.avg_score;
-        subjectMap[d.subject].count++;
-        if (!gradeMap[d.grade]) gradeMap[d.grade] = [];
-        gradeMap[d.grade].push(d);
-    }
-    const subjects = Object.keys(subjectMap);
-    const subjectAvg = subjects.map(sub => subjectMap[sub].sum / subjectMap[sub].count);
-    Plotly.react("chart1", [{ x: subjects, y: subjectAvg, type: "bar" }], {
-        title: "Average Performance by Subject"
+    data.forEach(row => {
+        if (!subjectMap[row.subject]) subjectMap[row.subject] = { sum: 0, count: 0 };
+        subjectMap[row.subject].sum += row.avg_score;
+        subjectMap[row.subject].count++;
     });
-    const traces = Object.entries(gradeMap).map(([grade, rows]) => ({
-        x: rows.map(d => d.subject),
-        y: rows.map(d => d.avg_score),
+    const subjects = Object.keys(subjectMap);
+    const subjectAvg = subjects.map(s => subjectMap[s].sum / subjectMap[s].count);
+    Plotly.react("chart1", [{
+        x: subjects,
+        y: subjectAvg,
         type: "bar",
-        name: grade
-    }));
-    Plotly.react("chart2", traces, { barmode: "group", title: "Grade Comparison" });
+        marker: { color: '#2563eb' }
+    }], {
+        title: "Average Performance by Subject",
+        xaxis: { title: "Subject" },
+        yaxis: { title: "Average Score" }
+    });
+}
+
+// drawSchoolComparison now accepts the controller instance
+async function drawSchoolComparison(ctrl) {
+    const grade = ctrl.state.grade;
+    const term = ctrl.state.term;
+    const year = ctrl.state.year;
+    const exam = ctrl.state.exam;
+    const schoolId = ctrl.state.school_id;
+
+    if (!grade) {
+        Plotly.purge("chart2");
+        document.getElementById("chart2").innerHTML = 
+            "<div class='text-center text-muted p-5'>Select a grade to see school comparison.</div>";
+        return;
+    }
+
+    const params = new URLSearchParams({
+        grade: grade,
+        term: term,
+        year: year,
+        exam: exam,
+        school_id: schoolId || ""
+    }).toString();
+
+    try {
+        const res = await fetch("/api/school_comparison?" + params);
+        const json = await res.json();
+        const schools = json.data;
+        const selectedId = json.selected_school_id ? parseInt(json.selected_school_id) : null;
+
+        if (!schools || schools.length === 0) {
+            Plotly.purge("chart2");
+            document.getElementById("chart2").innerHTML = 
+                "<div class='text-center text-muted p-5'>No data for the selected filters.</div>";
+            return;
+        }
+
+        const schoolNames = schools.map(s => s.school_name);
+        const avgScores = schools.map(s => s.avg_score);
+        const colors = schools.map(s => s.school_id === selectedId ? '#dc2626' : '#2563eb');
+
+        const trace = {
+            x: schoolNames,
+            y: avgScores,
+            type: "bar",
+            marker: { color: colors },
+            text: avgScores.map(v => v.toFixed(1)),
+            textposition: 'outside'
+        };
+
+        Plotly.react("chart2", [trace], {
+            title: `Average Scores for ${grade}`,
+            xaxis: { title: "School", automargin: true },
+            yaxis: { title: "Average Score" }
+        });
+
+    } catch (err) {
+        console.error("School comparison error:", err);
+        Plotly.purge("chart2");
+        document.getElementById("chart2").innerHTML = 
+            "<div class='text-center text-danger p-5'>Failed to load school comparison.</div>";
+    }
 }
 
 async function exportPDF() {

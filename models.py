@@ -1,7 +1,6 @@
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
-
-db = SQLAlchemy()
+from extensions import db
 
 
 # -------------------------
@@ -17,6 +16,7 @@ class User(UserMixin, db.Model):
 
     school_id = db.Column(db.Integer, db.ForeignKey('school.id'), nullable=True)
     grade = db.Column(db.String(20), nullable=True)  # teachers only
+    is_superadmin = db.Column(db.Boolean, default=False)
     school = db.relationship('School', backref='users')
 # -------------------------
 # SCHOOL
@@ -65,6 +65,7 @@ class Mark(db.Model):
     score = db.Column(db.Float)
 
     term = db.Column(db.String(10))
+    exam = db.Column(db.String(20), default='Exam 1')
     year = db.Column(db.Integer)
 
     cbc_level = db.Column(db.String(2))

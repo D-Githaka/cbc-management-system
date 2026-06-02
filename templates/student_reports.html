@@ -1,0 +1,218 @@
+{% extends 'base.html' %}
+{% block content %}
+<div id="reportExportArea">
+    <h2>Student Reports{% if school_name %} – {{ school_name }}{% endif %}</h2>
+    {% if grade %}
+    <h3>{{ grade }}</h3>
+    {% endif %}
+
+    <form method="GET" class="row g-3 mb-4 align-items-end">
+        <div class="col-md-2">
+            <select name="term" class="form-select">
+                {% for t in terms %}
+                    <option value="{{ t }}" {% if t == selected_term %}selected{% endif %}>{{ t }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <select name="exam" class="form-select">
+                <option value="">All Exams</option>
+                {% for e in exams %}
+                    <option value="{{ e }}" {% if exam == e %}selected{% endif %}>{{ e }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <select name="year" class="form-control">
+                <option value="">Year</option>
+                {% for y in range(2021, 2031) %}
+                    <option value="{{ y }}" {% if y|string == selected_year %}selected{% endif %}>{{ y }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% if current_user.role == 'admin' %}
+        <div class="col-md-2">
+            <select name="school_id" class="form-select">
+                <option value="">All Schools</option>
+                {% for s in schools %}
+                    <option value="{{ s.id }}" {% if request.args.get('school_id')|int == s.id %}selected{% endif %}>{{ s.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+        {% if current_user.role in ['admin','principal'] %}
+        <div class="col-md-2">
+            <select name="grade" class="form-select">
+                <option value="">All Grades</option>
+                {% for g in grades %}
+                    <option value="{{ g }}" {% if g == grade %}selected{% endif %}>{{ g }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+        <div class="col-md-2">
+            <label for="top_n" class="form-label">Top N</label>
+            <select name="top_n" id="top_n" class="form-select">
+                {% for n in [3,5,10,20] %}
+                    <option value="{{ n }}" {% if n == top_n %}selected{% endif %}>{{ n }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% if all_students %}
+        <div class="card p-3 shadow-sm mb-4">
+            <h5>All Students – {{ grade }}</h5>
+            <table class="table table-sm table-bordered">
+                <thead><tr><th>Student</th><th>Gender</th><th>Term Report</th></tr></thead>
+                <tbody>
+                    {% for s in all_students %}
+                    <tr>
+                        <td>{{ s.name }}</td>
+                        <td>{{ s.gender }}</td>
+                        <td>
+                            <a href="{{ url_for('reports.student_term_report', student_id=s.id, term=selected_term, year=selected_year) }}" 
+                               class="btn btn-sm btn-outline-primary">View</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        <div class="col-md-2">
+            <button class="btn btn-primary w-100">Filter</button>
+        </div>
+    </form>
+
+    <!-- Top Male Students - two columns -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card p-3 shadow-sm">
+                <h5>Top {{ top_n }} Male Students – Public</h5>
+                <table class="table table-sm table-bordered">
+                    <thead><tr><th>Grade</th><th>Student</th><th>Total Marks</th></tr></thead>
+                    <tbody>
+                        {% for s in top_male_public %}
+                        <tr>
+                            <td>{{ s.grade }}</td>
+                            <td><a href="/student/{{ s.student_id }}">{{ s.student_name }}</a></td>
+                            <td>{{ s.total_score }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3" class="text-muted">No data.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card p-3 shadow-sm">
+                <h5>Top {{ top_n }} Male Students – Private</h5>
+                <table class="table table-sm table-bordered">
+                    <thead><tr><th>Grade</th><th>Student</th><th>Total Marks</th></tr></thead>
+                    <tbody>
+                        {% for s in top_male_private %}
+                        <tr>
+                            <td>{{ s.grade }}</td>
+                            <td><a href="/student/{{ s.student_id }}">{{ s.student_name }}</a></td>
+                            <td>{{ s.total_score }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3" class="text-muted">No data.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Female Students - two columns -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card p-3 shadow-sm">
+                <h5>Top {{ top_n }} Female Students – Public</h5>
+                <table class="table table-sm table-bordered">
+                    <thead><tr><th>Grade</th><th>Student</th><th>Total Marks</th></tr></thead>
+                    <tbody>
+                        {% for s in top_female_public %}
+                        <tr>
+                            <td>{{ s.grade }}</td>
+                            <td><a href="/student/{{ s.student_id }}">{{ s.student_name }}</a></td>
+                            <td>{{ s.total_score }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3" class="text-muted">No data.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card p-3 shadow-sm">
+                <h5>Top {{ top_n }} Female Students – Private</h5>
+                <table class="table table-sm table-bordered">
+                    <thead><tr><th>Grade</th><th>Student</th><th>Total Marks</th></tr></thead>
+                    <tbody>
+                        {% for s in top_female_private %}
+                        <tr>
+                            <td>{{ s.grade }}</td>
+                            <td><a href="/student/{{ s.student_id }}">{{ s.student_name }}</a></td>
+                            <td>{{ s.total_score }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3" class="text-muted">No data.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Class Subject Averages - full width -->
+    <div class="card p-3 shadow-sm mb-4">
+        <h5>Class Subject Averages</h5>
+        <table class="table table-sm table-bordered">
+            <thead><tr><th>Subject</th><th>Average Score</th></tr></thead>
+            <tbody>
+                {% for subj in class_subject_averages %}
+                <tr>
+                    <td>{{ subj.subject_name }}</td>
+                    <td>{{ subj.avg_score }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="2" class="text-muted">No subject data.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<button class="btn btn-danger mt-3" onclick="exportPDF()">📄 Export to PDF</button>
+
+<script src="https://cdn.jsdelivr.net/npm/html2canvas"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script>
+async function exportPDF() {
+    const element = document.getElementById("reportExportArea");
+    if (!element) { alert("Export area not found"); return; }
+    const canvas = await html2canvas(element, { scale: 2 });
+    const imgData = canvas.toDataURL("image/png");
+    const pdf = new window.jspdf.jsPDF("p", "mm", "a4");
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const imgWidth = pageWidth;
+    const imgHeight = canvas.height * imgWidth / canvas.width;
+    let heightLeft = imgHeight;
+    let position = 0;
+    pdf.text("Student Report", 10, 10);
+    pdf.text(new Date().toLocaleString(), 10, 16);
+    pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+    heightLeft -= 297;
+    while (heightLeft > 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+        heightLeft -= 297;
+    }
+    pdf.save("student_report.pdf");
+}
+</script>
+{% endblock %}

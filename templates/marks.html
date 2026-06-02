@@ -5,7 +5,7 @@
 
 <div class="card p-4 shadow-sm">
 
-<form action="/enter_marks" method="GET">
+<form action="{{ url_for('marks.enter_marks') }}" method="GET">
     <div class="row g-3">
 
         {% if current_user.role == "admin" %}
@@ -40,6 +40,15 @@
         </div>
 
         <div class="col-md-3">
+            <label>Exam</label>
+            <select name="exam" class="form-select" required>
+                <option value="Exam 1">Exam 1</option>
+                <option value="Exam 2">Exam 2</option>
+                <option value="Exam 3">Exam 3</option>
+            </select>
+        </div>
+        
+        <div class="col-md-3">
             <label>Year</label>
             <select name="year" class="form-select" required>
                 <option value="">Year</option>
@@ -53,33 +62,23 @@
 
     <div class="d-flex gap-2 mt-3">
         <button class="btn btn-dark">Proceed to Enter Marks</button>
-        <a id="addStudentLink" href="/add_student" class="btn btn-success d-none">➕ Add Student</a>
+        <a id="addStudentLink" href="#" class="btn btn-success d-none">➕ Add Student</a>
     </div>
 </form>
-    <div class="modal fade" id="postAddModal" tabindex="-1">
+
+<div class="modal fade" id="postAddModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
-
       <div class="modal-header">
         <h5 class="modal-title">Student Added</h5>
       </div>
-
       <div class="modal-body">
         What would you like to do next?
       </div>
-
       <div class="modal-footer">
-
-        <a id="addAnotherBtn" class="btn btn-success">
-            ➕ Add Another Student
-        </a>
-
-        <a id="proceedBtn" class="btn btn-dark">
-            Proceed to Enter Marks
-        </a>
-
+        <a id="addAnotherBtn" class="btn btn-success">➕ Add Another Student</a>
+        <a id="proceedBtn" class="btn btn-dark">Proceed to Enter Marks</a>
       </div>
-
     </div>
   </div>
 </div>
@@ -87,22 +86,30 @@
 </div>
 
 <script>
+// FIXED: Resolve the blueprint URLs on the server-side first
+// (Assuming add_student is in the main blueprint, change 'main.add_student' if it's located elsewhere)
+const addStudentBaseUrl = "{{ url_for('main.add_student') if 'main.add_student' else '/add_student' }}";
+const enterMarksBaseUrl = "{{ url_for('marks.enter_marks') }}";
+
 // ---------- Update "Add Student" link dynamically ----------
 const gradeEl   = document.querySelector('select[name="grade"]');
 const termEl    = document.querySelector('select[name="term"]');
-const yearEl    = document.querySelector('input[name="year"]');
+// FIXED: Changed input[name="year"] to select[name="year"]
+const yearEl    = document.querySelector('select[name="year"]');
 const schoolEl  = document.querySelector('select[name="school_id"]');
 const addStudentLink = document.getElementById("addStudentLink");
 
 function updateAddStudentLink() {
     const grade = gradeEl ? gradeEl.value : "";
     const term  = termEl  ? termEl.value  : "";
-    const year  = yearEl  ? yearEl.value  : "";
+    const year  = yearEl  ? yearEl.value  : ""; // FIXED: This will now fetch correctly
 
     if (grade && term && year) {
         const params = new URLSearchParams({ grade, term, year });
         if (schoolEl) params.set("school_id", schoolEl.value);
-        addStudentLink.href = "/add_student?" + params.toString();
+        
+        // FIXED: Uses the dynamic base URL prefix safely
+        addStudentLink.href = addStudentBaseUrl + "?" + params.toString();
         addStudentLink.classList.remove("d-none");
     } else {
         addStudentLink.classList.add("d-none");
@@ -112,7 +119,8 @@ function updateAddStudentLink() {
 // Attach listeners
 if (gradeEl) gradeEl.addEventListener("change", updateAddStudentLink);
 if (termEl)  termEl.addEventListener("change", updateAddStudentLink);
-if (yearEl)  yearEl.addEventListener("input", updateAddStudentLink);
+// FIXED: Changed "input" to "change" event for consistency on select elements
+if (yearEl)  yearEl.addEventListener("change", updateAddStudentLink); 
 if (schoolEl) schoolEl.addEventListener("change", updateAddStudentLink);
 
 // Also update on page load
@@ -128,8 +136,9 @@ if (urlParams.get("added") === "1") {
 
     const query = new URLSearchParams({ grade, term, year, school_id }).toString();
 
-    document.getElementById("addAnotherBtn").href = "/add_student?" + query;
-    document.getElementById("proceedBtn").href = "/enter_marks?" + query;
+    // FIXED: Uses dynamic blueprint base paths in Javascript output strings
+    document.getElementById("addAnotherBtn").href = addStudentBaseUrl + "?" + query;
+    document.getElementById("proceedBtn").href = enterMarksBaseUrl + "?" + query;
 
     // Show the modal
     const modal = new bootstrap.Modal(document.getElementById("postAddModal"));
