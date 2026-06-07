@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>My Profile</h2>
+
+<div class="row">
+    <!-- Change Username -->
+    <div class="col-md-6 mb-4">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <a data-bs-toggle="collapse" href="#usernameForm" role="button" aria-expanded="false" class="text-decoration-none fw-bold">
+                    Change Username
+                </a>
+            </div>
+            <div class="collapse" id="usernameForm">
+                <div class="card-body">
+                    <form method="POST">
+                        <input type="hidden" name="action" value="change_username">
+                        <div class="mb-3">
+                            <label class="form-label">New Username</label>
+                            <input type="text" name="username" class="form-control" value="{{ user.username }}" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Update Username</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Change Password -->
+    <div class="col-md-6 mb-4">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <a data-bs-toggle="collapse" href="#passwordForm" role="button" aria-expanded="false" class="text-decoration-none fw-bold">
+                    Change Password
+                </a>
+            </div>
+            <div class="collapse" id="passwordForm">
+                <div class="card-body">
+                    <form method="POST">
+                        <input type="hidden" name="action" value="change_password">
+                        <div class="mb-3">
+                            <label class="form-label">New Password</label>
+                            <input type="password" name="password" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Confirm New Password</label>
+                            <input type="password" name="confirm_password" class="form-control" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Update Password</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="mt-3">
+    <a href="{{ url_for('main.splash') }}" class="btn btn-secondary">Cancel / Back</a>
+</div>
+{% endblock %}

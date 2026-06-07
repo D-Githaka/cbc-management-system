@@ -505,11 +505,7 @@ def reports_student():
         school_obj = School.query.get(int(school_id))
         if school_obj:
             school_name = school_obj.name
-    all_students = []
-    if school_id and grade:
-        all_students = Student.query.filter_by(
-            school_id=int(school_id), grade=grade
-        ).order_by(Student.name).all()
+
     return render_template(
         'student_reports.html',
         top_male_public=top_male_public,
@@ -526,8 +522,7 @@ def reports_student():
         terms=TERMS,
         exams=EXAMS,
         school_name=school_name,
-        grade=grade,
-        all_students=all_students
+        grade=grade
     )
 
 @reports_bp.route('/student/<int:student_id>/term_report')

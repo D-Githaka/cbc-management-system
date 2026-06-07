@@ -1,11 +1,7 @@
 {% extends 'base.html' %}
 {% block content %}
 <h2>Add Student</h2>
-<<<<<<< HEAD
-<a href="{{ url_for('students') }}" class="text-decoration-none mb-3 d-inline-block">← Back to Students</a>
-=======
 <a href="{{ url_for('main.students') }}" class="text-decoration-none mb-3 d-inline-block">← Back to Students</a>
->>>>>>> 1856202 (Multi-exam support, reports overhaul, and blueprint refactor)
 <form method="POST" class="card p-4 shadow-sm">
     <div class="mb-3">
         <label>Name</label>
@@ -13,8 +9,8 @@
     </div>
     <div class="mb-3">
         <label>Grade</label>
-      <select name="grade" class="form-select"
-            {% if current_user.role == 'teacher' %}disabled{% endif %}>
+        <select name="grade" class="form-select"
+                {% if current_user.role == 'teacher' %}disabled{% endif %}>
             {% if current_user.role == 'teacher' %}
                 <option value="{{ current_user.grade }}" selected>{{ current_user.grade }}</option>
             {% else %}
@@ -37,20 +33,20 @@
     </div>
     <div class="mb-3">
         <label>School</label>
-            <select name="school_id" class="form-select"
+        <select name="school_id" class="form-select"
                 {% if current_user.role != 'admin' %}disabled{% endif %}>
-                {% if current_user.role == 'admin' %}
-                    <option value="">Select School</option>
-                    {% for school in schools %}
-                        <option value="{{ school.id }}">{{ school.name }}</option>
-                    {% endfor %}
-                {% else %}
-                    <option value="{{ schools[0].id }}" selected>{{ schools[0].name }}</option>
-                {% endif %}
-            </select>
-            {% if current_user.role != 'admin' %}
-                <input type="hidden" name="school_id" value="{{ schools[0].id }}">
+            {% if current_user.role == 'admin' %}
+                <option value="">Select School</option>
+                {% for school in schools %}
+                    <option value="{{ school.id }}">{{ school.name }}</option>
+                {% endfor %}
+            {% else %}
+                <option value="{{ schools[0].id }}" selected>{{ schools[0].name }}</option>
             {% endif %}
+        </select>
+        {% if current_user.role != 'admin' %}
+            <input type="hidden" name="school_id" value="{{ schools[0].id }}">
+        {% endif %}
     </div>
     <input type="hidden" name="grade" value="{{ request.args.get('grade') }}">
     <input type="hidden" name="term" value="{{ request.args.get('term') }}">

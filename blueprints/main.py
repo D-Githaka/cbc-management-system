@@ -7,27 +7,29 @@ from flask import (Blueprint, render_template, request, redirect,
 from flask_login import login_required, current_user
 
 from extensions import db
-from models import School, Student, Subject, Mark
+from models import School, Student, Subject, Mark, User
 from utils.decorators import role_required
 from utils.helpers import cbc_grade
 from timetable_generator import (generate_timetable,
                                  generate_subjects_template,
                                  generate_allocation_template)
+from werkzeug.security import generate_password_hash
 
 main_bp = Blueprint('main', __name__)
 
-
 @main_bp.route('/')
-@login_required
-def index():
-    schools_count = School.query.count()
-    students_count = Student.query.count()
-    subjects_count = Subject.query.count()
-    return render_template('index.html',
-                           schools_count=schools_count,
-                           students_count=students_count,
-                           subjects_count=subjects_count)
-
+def splash():
+    if current_user.is_authenticated:
+        # Gather dashboard stats
+        schools_count = School.query.count()
+        students_count = Student.query.count()
+        subjects_count = Subject.query.count()
+        return render_template('splash.html',
+                               schools_count=schools_count,
+                               students_count=students_count,
+                               subjects_count=subjects_count)
+    # Not logged in – no stats needed
+    return render_template('splash.html')
 
 # ---------- Schools ----------
 @main_bp.route('/schools')
@@ -480,3 +482,44 @@ def analytics():
     grades = ["PP1","PP2","Grade 1","Grade 2","Grade 3","Grade 4","Grade 5",
               "Grade 6","Grade 7","Grade 8","Grade 9"]
     return render_template('analytics.html', schools=schools, grades=grades)
+
+
+@main_bp.route('/profile', methods=['GET', 'POST'])
+@login_required
+def profile():
+    user = current_user._get_current_object()
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+
+        if action == 'change_username':
+            new_username = request.form.get('username', '').strip()
+            if new_username and new_username != user.username:
+                existing = User.query.filter_by(username=new_username).first()
+                if existing:
+                    flash('Username already taken.', 'danger')
+                    return redirect(url_for('main.profile'))
+                user.username = new_username
+                db.session.commit()
+                flash('Username updated.', 'success')
+                return redirect(url_for('main.profile'))
+
+        elif action == 'change_password':
+            new_password = request.form.get('password', '').strip()
+            confirm_password = request.form.get('confirm_password', '').strip()
+            if not new_password:
+                flash('Password cannot be empty.', 'danger')
+                return redirect(url_for('main.profile'))
+            if new_password != confirm_password:
+                flash('Passwords do not match.', 'danger')
+                return redirect(url_for('main.profile'))
+            user.password = generate_password_hash(new_password)
+            db.session.commit()
+            flash('Password updated.', 'success')
+            return redirect(url_for('main.profile'))
+
+        else:
+            flash('Invalid action.', 'danger')
+            return redirect(url_for('main.profile'))
+
+    return render_template('profile.html', user=user)

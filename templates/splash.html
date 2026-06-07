@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CBC Management System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #0b1a2f, #1b2a3f);
+            color: #e0e0e0;
+            min-height: 100vh;
+        }
+        .hero {
+            padding: 4rem 2rem;
+            text-align: center;
+        }
+        .hero h1 {
+            font-size: 3rem;
+            font-weight: 700;
+            color: #ffffff;
+        }
+        .feature-card {
+            background: rgba(255,255,255,0.08);
+            backdrop-filter: blur(12px);
+            border-radius: 16px;
+            padding: 2rem;
+            transition: transform 0.2s, box-shadow 0.2s;
+            border: 1px solid rgba(255,255,255,0.1);
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 24px rgba(0,0,0,0.3);
+        }
+        a.feature-card:hover {
+            color: #ffffff;
+            background: rgba(255,255,255,0.15);
+        }
+        .feature-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            color: #4ea8de;
+        }
+        .btn-login {
+            padding: 12px 32px;
+            font-size: 1.2rem;
+            border-radius: 30px;
+        }
+        footer {
+            margin-top: 4rem;
+            padding: 2rem;
+            text-align: center;
+            color: #6c757d;
+        }
+        .navbar {
+            background: #212529 !important;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Authenticated Navbar -->
+    {% if current_user.is_authenticated %}
+    <nav class="navbar navbar-dark bg-dark px-3">
+        <button class="btn btn-outline-light d-md-none me-2" onclick="toggleSidebar()" style="display:none;">☰</button>
+        <a class="navbar-brand" href="{{ url_for('main.splash') }}">
+            <img src="{{ url_for('static', filename='logo.png') }}" alt="CBC System" height="60">
+        </a>
+        <div class="ms-auto d-flex align-items-center gap-3 text-white">
+            👤 {{ current_user.username }}
+            <a href="{{ url_for('main.profile') }}" class="btn btn-sm btn-outline-light" title="Profile">
+                <i class="bi bi-person-circle"></i> Profile
+            </a>
+            <a href="{{ url_for('logout') }}" class="btn btn-sm btn-outline-light">Logout</a>
+        </div>
+    </nav>
+    {% endif %}
+
+    <div class="container hero">
+        <h1>Inoi Cluster Quality Assurance CBC System</h1>
+        <p class="lead mb-5">All‑in‑one platform for Competency‑Based Curriculum assessments, reports, and school administration.</p>
+
+        {% if current_user.is_authenticated %}
+        <!-- Quick Stats Row -->
+        <div class="row mb-5">
+            <div class="col-md-4">
+                <a href="{{ url_for('main.schools') }}" class="feature-card text-center">
+                    <div class="feature-icon"><i class="bi bi-building"></i></div>
+                    <h5>Total Schools</h5>
+                    <h3 class="display-6 fw-bold text-white">{{ schools_count }}</h3>
+                </a>
+            </div>
+            <div class="col-md-4">
+                <a href="{{ url_for('main.students') }}" class="feature-card text-center">
+                    <div class="feature-icon"><i class="bi bi-people-fill"></i></div>
+                    <h5>Total Students</h5>
+                    <h3 class="display-6 fw-bold text-white">{{ students_count }}</h3>
+                </a>
+            </div>
+            <div class="col-md-4">
+                <a href="{{ url_for('main.subjects') }}" class="feature-card text-center">
+                    <div class="feature-icon"><i class="bi bi-book"></i></div>
+                    <h5>Total Subjects</h5>
+                    <h3 class="display-6 fw-bold text-white">{{ subjects_count }}</h3>
+                </a>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="row g-4 mb-5">
+            <!-- Student & Marks Management -->
+            <div class="col-md-4">
+                {% if current_user.is_authenticated %}
+                <a href="{{ url_for('reports.reports_student') }}" class="feature-card text-center">
+                {% else %}
+                <div class="feature-card text-center">
+                {% endif %}
+                    <div class="feature-icon"><i class="bi bi-people-fill"></i></div>
+                    <h5>Student & Marks Management</h5>
+                    <p class="small">Add students, enter marks per exam cycle (up to three exams per term), and track individual progress.</p>
+                {% if current_user.is_authenticated %}
+                </a>
+                {% else %}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Powerful Reports -->
+            <div class="col-md-4">
+                {% if current_user.is_authenticated %}
+                <a href="{{ url_for('reports.reports_school') }}" class="feature-card text-center">
+                {% else %}
+                <div class="feature-card text-center">
+                {% endif %}
+                    <div class="feature-icon"><i class="bi bi-bar-chart-line"></i></div>
+                    <h5>Powerful Reports</h5>
+                    <p class="small">School rankings by subject, top male/female students, class averages, and instant Excel downloads.</p>
+                {% if current_user.is_authenticated %}
+                </a>
+                {% else %}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Timetable Generator -->
+            <div class="col-md-4">
+                {% if current_user.is_authenticated and current_user.role in ['admin','principal'] %}
+                <a href="{{ url_for('main.timetable_page') }}" class="feature-card text-center">
+                {% else %}
+                <div class="feature-card text-center">
+                {% endif %}
+                    <div class="feature-icon"><i class="bi bi-calendar3"></i></div>
+                    <h5>Timetable Generator</h5>
+                    <p class="small">Create conflict‑free timetables for any combination of grades, subjects, and teachers in any registered school.</p>
+                {% if current_user.is_authenticated and current_user.role in ['admin','principal'] %}
+                </a>
+                {% else %}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Real‑time Mark Entry -->
+            <div class="col-md-4">
+                {% if current_user.is_authenticated %}
+                <a href="{{ url_for('marks.marks') }}" class="feature-card text-center">
+                {% else %}
+                <div class="feature-card text-center">
+                {% endif %}
+                    <div class="feature-icon"><i class="bi bi-pencil-square"></i></div>
+                    <h5>Real‑time Mark Entry</h5>
+                    <p class="small">Enter marks with a live grid, automatic CBC grading (EE/ME/AE/BE), and inline editing.</p>
+                {% if current_user.is_authenticated %}
+                </a>
+                {% else %}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Role‑Based Access (static) -->
+            <div class="col-md-4">
+                <div class="feature-card text-center">
+                    <div class="feature-icon"><i class="bi bi-shield-lock"></i></div>
+                    <h5>Role‑Based Access</h5>
+                    <p class="small">Teachers, principals, and admins see only what they need. Strong school‑scoped security.</p>
+                </div>
+            </div>
+
+            <!-- CSV Import & Export -->
+            <div class="col-md-4">
+                {% if current_user.is_authenticated %}
+                <a href="{{ url_for('main.upload_csv') }}" class="feature-card text-center">
+                {% else %}
+                <div class="feature-card text-center">
+                {% endif %}
+                    <div class="feature-icon"><i class="bi bi-upload"></i></div>
+                    <h5>CSV Import & Export</h5>
+                    <p class="small">Bulk‑upload students and marks via CSV, export reports as Excel/PDF for offline use.</p>
+                {% if current_user.is_authenticated %}
+                </a>
+                {% else %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if not current_user.is_authenticated %}
+            <a href="{{ url_for('login') }}" class="btn btn-primary btn-login">Login to Continue</a>
+            <p class="mt-3 small text-muted">Teachers, principals, and administrators can sign in.</p>
+        {% endif %}
+        {% if current_user.is_authenticated %}
+            <p class="mt-3 small text-muted">Teachers, principals, and administrators can sign in.</p>
+            <a href="{{ url_for('main.analytics') }}" class="btn btn-primary btn-login">Continue to App</a>
+
+        {% endif %}
+    </div>
+
+    <footer>
+        &copy; 2026 CBC Management System &middot; Built for Kenyan Schools
+    </footer>
+</body>
+</html>
