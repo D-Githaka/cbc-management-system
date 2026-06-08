@@ -3,6 +3,7 @@ from extensions import db
 from models import School, Student, Subject, Mark, User
 from seed import seed_subjects
 from utils.helpers import cbc_grade
+from werkzeug.security import generate_password_hash
 
 # ------------------------------------------------------------
 # Helper: random names
@@ -26,7 +27,7 @@ LAST_NAMES = [
 def random_student_name(gender):
     first = random.choice(FIRST_NAMES_MALE if gender == 'M' else FIRST_NAMES_FEMALE)
     last = random.choice(LAST_NAMES)
-    return f"{first} {last} {random.randint(100,999)}"
+    return f"{first} {last}"
 
 # ------------------------------------------------------------
 # Main seeding function
@@ -52,11 +53,8 @@ def seed_demo_data():
     ]
 
     schools = []
-    for i, name in enumerate(school_names):
-        school = School(
-            name=name,
-            type="Public" if i % 2 != 0 else "Private"
-        )
+    for i, name in enumerate(school_names, start=1):
+        school = School(name=name, type="Public" if i % 3 != 0 else "Private")
         db.session.add(school)
         schools.append(school)
     db.session.commit()
@@ -65,33 +63,47 @@ def seed_demo_data():
               "Grade 5","Grade 6","Grade 7","Grade 8","Grade 9"]
 
     terms = ["Term 1","Term 2","Term 3"]
-    exams = ["Exam 1","Exam 2","Exam 3"]          # ← NEW
+    exams = ["Exam 1","Exam 2","Exam 3"]
     year = 2026
 
     total_students = 0
     total_marks = 0
 
     for school in schools:
+        # Create principal for the school
+        principal = User(
+            username=f"principal{school.id}",
+            password=generate_password_hash("principal123"),
+            role="principal",
+            school_id=school.id
+        )
+        db.session.add(principal)
+        # Create 3 demo teachers per school
+        for t in range(1, 4):
+            teacher = User(
+                username=f"teacher{school.id}_{t}",
+                password=generate_password_hash("teacher123"),
+                role="teacher",
+                school_id=school.id
+            )
+            db.session.add(teacher)
+
         for grade in grades:
             subjects = subjects_by_grade.get(grade, [])
             if not subjects:
                 continue
-
             for _ in range(50):
                 gender = random.choice(['M','F'])
                 name = random_student_name(gender)
                 student = Student(
-                    name=name,
-                    grade=grade,
-                    gender=gender,
+                    name=name, grade=grade, gender=gender,
                     school_id=school.id
                 )
                 db.session.add(student)
                 db.session.flush()
-
                 for subject in subjects:
                     for term in terms:
-                        for exam in exams:       # ← 3 exams per term
+                        for exam in exams:
                             score = random.randint(20, 100)
                             mark = Mark(
                                 student_id=student.id,
@@ -99,7 +111,7 @@ def seed_demo_data():
                                 score=score,
                                 term=term,
                                 year=year,
-                                exam=exam,        # ← set exam
+                                exam=exam,
                                 cbc_level=cbc_grade(score)
                             )
                             db.session.add(mark)
@@ -109,8 +121,7 @@ def seed_demo_data():
         db.session.commit()
         print(f"  ✔ School '{school.name}' – {total_students} students so far...")
 
-    # Create admin user only if it doesn't exist
-    from werkzeug.security import generate_password_hash
+    # Create admin user if it doesn't exist
     if not User.query.filter_by(username='admin').first():
         admin = User(
             username="admin",
@@ -123,10 +134,10 @@ def seed_demo_data():
     else:
         print("ℹ️ Admin user already exists, skipping.")
 
+    print(f"✅ Done! Total students: {total_students}, Total marks: {total_marks}")
+
 # ------------------------------------------------------------
 if __name__ == "__main__":
-    # This block only runs when executing the file directly.
-    # It needs a Flask app context, so import app here.
     from app import app
     with app.app_context():
         db.create_all()

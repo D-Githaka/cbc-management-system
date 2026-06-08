@@ -229,7 +229,64 @@ def create_app():
         school_id = request.form.get('school_id')
         school_id = int(school_id) if school_id else None
         grade = request.form.get('grade')
-
+        employee_id = request.form.get('employee_id', '').strip()
+        if not employee_id:
+            # Auto‑generate based on role
+            if role == 'admin':
+                # Find the highest existing admin ID
+                last_admin = User.query.filter(User.role == 'admin', User.employee_id.like('ADM-%')).order_by(User.id.desc()).first()
+                next_num = 1
+                if last_admin:
+                    try:
+                        next_num = int(last_admin.employee_id.split('-')[1]) + 1
+                    except:
+                        next_num = 1
+                employee_id = f"ADM-{next_num:03d}"
+            else:
+                school = School.query.get(school_id)
+                if school:
+                    # Find highest existing staff ID for this school
+                    last_emp = User.query.filter(User.school_id == school_id, User.employee_id.like(f'{school.entry}-%')).order_by(User.id.desc()).first()
+                    next_num = 1
+                    if last_emp:
+                        try:
+                            next_num = int(last_emp.employee_id.split('-')[-1]) + 1
+                        except:
+                            next_num = 1
+                    employee_id = f"{school.entry}-EMP-{next_num:03d}"
+                else:
+                    flash("School is required for non‑admin users.", "danger")
+                    return redirect(url_for('manage_users'))
+        else:
+            # Check global uniqueness
+            existing = User.query.filter_by(employee_id=employee_id).first()
+            if existing:
+                flash('A user with that Staff ID already exists.', 'danger')
+                return redirect(url_for('manage_users'))
+        if not employee_id and role in ['teacher', 'principal']:
+            # Generate based on school
+            school = School.query.get(school_id)
+            if school:
+                # find max existing employee_id for that school
+                existing = User.query.filter(
+                    User.school_id == school_id,
+                    User.employee_id.isnot(None)
+                ).order_by(User.id.desc()).first()
+                last_num = 1
+                if existing and existing.employee_id:
+                    # e.g. SCH-001-EMP-003 → extract 3
+                    try:
+                        last_num = int(existing.employee_id.split('-')[-1]) + 1
+                    except:
+                        last_num = 1
+                employee_id = f"{school.entry}-EMP-{last_num:03d}"
+        elif employee_id and role in ['teacher', 'principal']:
+            # check uniqueness per school
+            existing = User.query.filter_by(school_id=school_id, employee_id=employee_id).first()
+            if existing:
+                flash('An employee with that ID already exists in this school.', 'danger')
+                return redirect(url_for('manage_users'))
+        # … then create the user with employee_id
         if current_user.role == 'principal':
             if role != 'teacher':
                 flash("Principal can only create teacher accounts.", "danger")

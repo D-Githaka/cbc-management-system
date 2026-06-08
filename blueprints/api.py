@@ -1,3 +1,4 @@
+import uuid
 from flask import Blueprint, request, jsonify
 from flask_login import login_required, current_user
 from models import School, Student, Subject, Mark
@@ -164,58 +165,49 @@ def api_school_overview():
 @api_bp.route('/api/add_student_with_marks', methods=['POST'])
 @login_required
 def add_student_with_marks():
-
     data = request.get_json()
-
-    # -----------------------------
-    # Validate required fields
-    # -----------------------------
     name = data.get("name")
     grade = data.get("grade")
     term = data.get("term")
     year = data.get("year")
     marks = data.get("marks", {})
+    school_id = data.get("school_id") if current_user.role == "admin" else current_user.school_id
 
     if not name or not grade or not term or not year:
         return jsonify({"error": "Missing required fields"}), 400
 
-    # -----------------------------
-    # Check duplicates (optional but recommended)
-    # -----------------------------
-    existing = Student.query.filter_by(
-    name=name,
-    grade=grade
-    ).first()
-    if existing:
-        return jsonify({"error": "Student already exists in this grade"}), 400
+    # --- Admission number ---
+    adm = data.get('admission_number', '').strip()
+    school = School.query.get(int(school_id)) if school_id else None
 
-    # -----------------------------
-    # Create student
-    # -----------------------------
-    # Determine the school_id
-    if current_user.role == "admin":
-        school_id = data.get("school_id")
+    if not adm:
+        if school:
+            last = Student.query.filter(
+                Student.admission_number.like(f'{school.entry}-%')
+            ).order_by(Student.id.desc()).first()
+            next_num = 1
+            if last:
+                try:
+                    next_num = int(last.admission_number.split('-')[-1]) + 1
+                except:
+                    next_num = 1
+            adm = f"{school.entry}-ADM-{next_num:04d}"
+        else:
+            adm = f"ADM-{uuid.uuid4().hex[:6].upper()}"
     else:
-        school_id = current_user.school_id
-
-    # Check duplicates
-    existing = Student.query.filter_by(
-        name=name,
-        grade=grade,
-        school_id=school_id
-    ).first()
-    if existing:
-        return jsonify({"error": "Student already exists in this grade"}), 400
+        if Student.query.filter_by(admission_number=adm).first():
+            return jsonify({"error": "Admission number already exists"}), 400
 
     # Create student
     student = Student(
         name=name,
         grade=grade,
+        gender=data.get('gender', 'M'),
+        admission_number=adm,
         school_id=school_id
     )
-
     db.session.add(student)
-    db.session.flush()  # get student.id before commit
+    db.session.flush()
 
     # -----------------------------
     # Save marks
@@ -243,12 +235,7 @@ def add_student_with_marks():
     # Commit all changes
     # -----------------------------
     db.session.commit()
-
-    return jsonify({
-        "status": "success",
-        "student_id": student.id,
-        "message": "Student and marks saved successfully"
-    })
+    return jsonify({"status": "success", "student_id": student.id, "admission_number": adm})
 
 @api_bp.route('/api/school_comparison')
 @login_required

@@ -144,7 +144,7 @@
 
         <div class="ms-auto d-flex align-items-center gap-3 text-white">
             {% if current_user.is_authenticated %}
-            👤 {{ current_user.username }}
+            👤 {{ current_user.username }} <small >(#{{ current_user.id }})</small>
             <a href="{{ url_for('main.profile') }}" class="btn btn-sm btn-outline-light" title="Profile">
                 <i class="bi bi-person-circle"></i> Profile
             </a>

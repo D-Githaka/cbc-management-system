@@ -1,7 +1,7 @@
 import io
 import csv
 import pandas as pd
-
+import uuid
 from flask import (Blueprint, render_template, request, redirect,
                    flash, url_for, send_file,abort)
 from flask_login import login_required, current_user
@@ -46,7 +46,18 @@ def add_school():
     if request.method == 'POST':
         name = request.form['name']
         school_type = request.form.get('type', 'Public')
-        db.session.add(School(name=name, type=school_type))
+        entry = request.form.get('entry', '').strip()
+        if not entry:
+            # Auto‑generate: find the highest existing number and increment
+            last = School.query.order_by(School.id.desc()).first()
+            next_num = (last.id + 1) if last else 1
+            entry = f"SCH-{next_num:03d}"
+        # Check uniqueness
+        existing = School.query.filter_by(entry=entry).first()
+        if existing:
+            flash('A school with that Entry number already exists.', 'danger')
+            return redirect(url_for('main.add_school'))
+        db.session.add(School(name=name, type=school_type, entry=entry))
         db.session.commit()
         flash('School added.', 'success')
         return redirect(url_for('main.schools'))
@@ -61,6 +72,13 @@ def edit_school(id):
     if request.method == 'POST':
         school.name = request.form['name']
         school.type = request.form.get('type', school.type)
+        new_entry = request.form.get('entry', '').strip()
+        if new_entry and new_entry != school.entry:
+            existing = School.query.filter_by(entry=new_entry).first()
+            if existing:
+                flash('That Entry number is already in use.', 'danger')
+                return render_template('edit_school.html', school=school)
+            school.entry = new_entry
         db.session.commit()
         flash('School updated.', 'success')
         return redirect(url_for('main.schools'))
@@ -128,15 +146,32 @@ def students():
 def add_student():
     schools = School.query.all() if current_user.role == 'admin' else [School.query.get(current_user.school_id)]
     if request.method == 'POST':
-        student = Student(
-            name=request.form['name'],
-            grade=request.form['grade'],
-            gender=request.form.get('gender', 'M'),
-            school_id=request.form['school_id']
-        )
+        name = request.form['name']
+        grade = request.form['grade']
+        gender = request.form.get('gender', 'M')
+        school_id = request.form['school_id']
+        school = School.query.get(school_id)
+        adm = request.form.get('admission_number', '').strip()
+        if not adm:
+            # auto‑generate
+            last = Student.query.filter_by(school_id=school_id).order_by(Student.id.desc()).first()
+            last_num = 1
+            if last and last.admission_number:
+                try:
+                    last_num = int(last.admission_number.split('-')[-1]) + 1
+                except:
+                    last_num = 1
+            adm = f"{school.entry}-ADM-{last_num:04d}"
+        else:
+            # check uniqueness within the school
+            existing = Student.query.filter_by(school_id=school_id, admission_number=adm).first()
+            if existing:
+                flash('A student with that admission number already exists in this school.', 'danger')
+                return redirect(url_for('main.add_student'))
+        student = Student(name=name, grade=grade, gender=gender, admission_number=adm, school_id=school_id)
         db.session.add(student)
         db.session.commit()
-        flash('Student added successfully.', 'success')
+        flash('Student added.', 'success')
         return redirect(url_for('main.students'))
     return render_template('add_student.html', schools=schools)
 
@@ -158,9 +193,39 @@ def edit_student(id):
         student.grade = request.form['grade']
         student.gender = request.form.get('gender', student.gender)
         student.school_id = request.form['school_id']
+
+        # --- Admission number logic ---
+        new_adm = request.form.get('admission_number', '').strip()
+        if new_adm:
+            # Manual entry – check uniqueness (excluding this student)
+            existing = Student.query.filter(
+                Student.admission_number == new_adm,
+                Student.id != student.id
+            ).first()
+            if existing:
+                flash('A student with that admission number already exists.', 'danger')
+                return render_template('edit_student.html', student=student, schools=schools)
+            student.admission_number = new_adm
+        # if blank, keep the existing one (or auto-generate if it was empty before)
+        elif not student.admission_number:
+            # Auto‑generate
+            school = School.query.get(student.school_id)
+            if school:
+                last = Student.query.filter(
+                    Student.admission_number.like(f'{school.entry}-%')
+                ).order_by(Student.id.desc()).first()
+                next_num = 1
+                if last:
+                    try:
+                        next_num = int(last.admission_number.split('-')[-1]) + 1
+                    except:
+                        next_num = 1
+                student.admission_number = f"{school.entry}-ADM-{next_num:04d}"
+
         db.session.commit()
         flash('Student updated.', 'success')
         return redirect(url_for('main.students'))
+
     return render_template('edit_student.html', student=student, schools=schools)
 
 
@@ -338,21 +403,43 @@ def upload_csv():
             grade = row.get('grade', '').strip()
             if not name or not grade:
                 continue
-
-            if current_user.role == 'teacher' and grade != current_user.grade:
-                error_rows.append(f'Row {idx}: grade mismatch (you can only add to {current_user.grade})')
-                continue
-
-            existing = Student.query.filter_by(name=name, grade=grade, school_id=school_id).first()
-            if existing:
-                error_rows.append(f'Row {idx}: student "{name}" already exists in {grade}.')
-                continue
-
             gender = row.get('gender', 'M').strip().upper()
             if gender not in ('M', 'F'):
                 gender = 'M'
+            adm = row.get('admission_number', '').strip()
+            school = School.query.get(int(school_id)) if school_id else None
 
-            student = Student(name=name, grade=grade, gender=gender, school_id=school_id)
+            if not adm:
+                # Auto‑generate
+                if school:
+                    last = Student.query.filter(
+                        Student.admission_number.like(f'{school.entry}-%')
+                    ).order_by(Student.id.desc()).first()
+                    next_num = 1
+                    if last:
+                        try:
+                            next_num = int(last.admission_number.split('-')[-1]) + 1
+                        except:
+                            next_num = 1
+                    adm = f"{school.entry}-ADM-{next_num:04d}"
+                else:
+                    # Fallback (should not happen because school_id is always set)
+                    adm = f"ADM-{uuid.uuid4().hex[:6].upper()}"
+            else:
+                # Check global uniqueness
+                existing = Student.query.filter_by(admission_number=adm).first()
+                if existing:
+                    error_rows.append(f'Row {idx}: admission number "{adm}" already exists.')
+                    continue
+
+            # … then create the student with admission_number=adm
+            student = Student(
+                name=name,
+                grade=grade,
+                gender=gender,
+                admission_number=adm,
+                school_id=school_id
+            )
             db.session.add(student)
             db.session.flush()
 
