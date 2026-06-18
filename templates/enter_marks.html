@@ -41,8 +41,13 @@
         </select>
     </div>
     <div class="col">
-        <input type="number" name="year" class="form-control"
-               placeholder="Year" value="{{ year }}">
+
+        <select name="year" class="form-select">
+          <option value="">Year</option>
+          {% for y in range(2021, 2031) %}
+            <option value="{{ y }}">{{ y }}</option>
+          {% endfor %}
+        </select>
     </div>
 
     <div class="col">

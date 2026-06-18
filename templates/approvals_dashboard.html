@@ -1,0 +1,85 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Approvals Dashboard</h2>
+
+{% if current_user.role == 'admin' %}
+<form method="GET" class="mb-3">
+    <select name="school_id" class="form-select" onchange="this.form.submit()">
+        <option value="">All Schools</option>
+        {% for s in schools %}
+            <option value="{{ s.id }}" {% if request.args.get('school_id')|int == s.id %}selected{% endif %}>{{ s.name }}</option>
+        {% endfor %}
+    </select>
+</form>
+{% endif %}
+
+<table class="table table-bordered">
+    <thead>
+        <tr>
+            <th>Teacher</th>
+            <th>School</th>
+            <th>Grade</th>
+            <th>Term</th>
+            <th>Year</th>
+            <th>Exam</th>
+            <th>Progress</th>
+            <th>Submitted</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for s in submissions %}
+        <tr>
+            <td>{{ s.teacher_name }}</td>
+            <td>{{ s.school_name }}</td>
+            <td>{{ s.grade }}</td>
+            <td>{{ s.term }}</td>
+            <td>{{ s.year }}</td>
+            <td>{{ s.exam }}</td>
+            <td>
+                {% if s.approved_count == s.mark_count %}
+                    <span class="badge bg-success">Approved</span>
+                    <small class="d-block">{{ s.approved_by_name }} at {{ s.approved_at.strftime('%Y-%m-%d %H:%M') if s.approved_at else '' }}</small>
+                {% else %}
+                    <span class="badge bg-warning">Pending</span>
+                {% endif %}
+            </td>
+            <td>{{ s.submitted_at.strftime('%Y-%m-%d %H:%M') if s.submitted_at else '' }}</td>
+            <td>
+                <a href="{{ url_for('approvals.view_submission', teacher_id=s.submitted_by, grade=s.grade, term=s.term, year=s.year, exam=s.exam) }}" 
+                   class="btn btn-sm btn-outline-primary">View</a>
+                {% if s.approved_count < s.mark_count %}
+                <button class="btn btn-sm btn-success approve-btn" 
+                        data-teacher="{{ s.submitted_by }}"
+                        data-grade="{{ s.grade }}"
+                        data-term="{{ s.term }}"
+                        data-year="{{ s.year }}"
+                        data-exam="{{ s.exam }}">Approve</button>
+                {% endif %}
+    </td>
+</tr>
+{% endfor %}
+    </tbody>
+</table>
+
+<script>
+document.querySelectorAll('.approve-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        if (!confirm('Approve all pending marks for this submission?')) return;
+        const res = await fetch('/approvals/approve', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                teacher_id: btn.dataset.teacher,
+                grade: btn.dataset.grade,
+                term: btn.dataset.term,
+                year: btn.dataset.year,
+                exam: btn.dataset.exam
+            })
+        });
+        const data = await res.json();
+        if (data.status === 'success') location.reload();
+    });
+});
+</script>
+{% endblock %}

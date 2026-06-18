@@ -93,6 +93,18 @@
       box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.5);
     }
 
+    .sidebar a[data-bs-toggle="collapse"]:hover {
+    background: #343a40;
+    }
+    .sidebar .collapse a:hover {
+        background: #343a40;
+        color: #ffffff !important;
+    }
+    .sidebar .collapse a.active {
+        color: #ffffff !important;
+        font-weight: 600;
+    }
+
     @media (min-width: 768px) {
         .layout {
             display: flex;
@@ -143,14 +155,21 @@
         </a>
 
         <div class="ms-auto d-flex align-items-center gap-3 text-white">
-            {% if current_user.is_authenticated %}
-            👤 {{ current_user.username }} <small >(#{{ current_user.id }})</small>
+            <span>
+                👤 {{ current_user.username }}
+                {% if current_user.role == 'teacher' and current_user.school %}
+                    <br><small>{{ current_user.school.name }} – {{ current_user.grade }}</small>
+                {% elif current_user.role == 'principal' and current_user.school %}
+                    <br><small>{{ current_user.school.name }}</small>
+                {% elif current_user.role == 'admin' %}
+                    <br><small>Admin
+                    (id. #{{ current_user.id }})</small>
+                {% endif %}
+            </span>
             <a href="{{ url_for('main.profile') }}" class="btn btn-sm btn-outline-light" title="Profile">
                 <i class="bi bi-person-circle"></i> Profile
             </a>
             <a href="{{ url_for('logout') }}" class="btn btn-sm btn-outline-light">Logout</a>
-            {% endif %}
-
         </div>
     </nav>
 
@@ -176,8 +195,26 @@
             <i class="bi bi-building"></i> Schools
         </a>
 
-        <a href="{{ url_for('reports.reports_school') }}"><i class="bi bi-building"></i> School Reports</a>
-        <a href="{{ url_for('reports.reports_student') }}"><i class="bi bi-person-lines-fill"></i> Student Reports</a>
+        <a class="d-flex align-items-center text-white text-decoration-none" data-bs-toggle="collapse" 
+           href="#reportsMenu" role="button" aria-expanded="false" aria-controls="reportsMenu"
+           style="padding: 10px; border-radius: 6px;">
+            <i class="bi bi-bar-chart me-2"></i> Reports
+        </a>
+        <div class="collapse" id="reportsMenu">
+            <a href="{{ url_for('reports.reports_school') }}" 
+               class="d-block text-white-50 py-1 ps-4 {{ 'active' if request.path == url_for('reports.reports_school') }}">School Reports</a>
+            <a href="{{ url_for('reports.reports_student') }}" 
+               class="d-block text-white-50 py-1 ps-4 {{ 'active' if request.path == url_for('reports.reports_student') }}">Student Reports</a>
+            <a href="{{ url_for('reports.reports_cbc') }}" 
+               class="d-block text-white-50 py-1 ps-4 {{ 'active' if request.path == url_for('reports.reports_cbc') }}">CBC Grade Reports</a>
+        </div>
+
+        {% if current_user.role in ['admin', 'principal'] %}
+        <a href="{{ url_for('approvals.approvals_dashboard') }}" 
+           class="{{ 'active' if request.path.startswith('/approvals') }}">
+            <i class="bi bi-check-circle"></i> Marks Approval
+        </a>
+        {% endif %}
 
         {% if current_user.role in ['admin', 'principal'] %}
         <a href="{{ url_for('manage_users') }}" class="{{ 'active' if current == url_for('manage_users') }}">

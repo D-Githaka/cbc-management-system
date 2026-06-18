@@ -1,0 +1,120 @@
+{% extends 'base.html' %}
+{% block content %}
+<div id="reportExportArea">
+    <h2>CBC Grade Reports{% if school_name %} – {{ school_name }}{% endif %}</h2>
+    {% if grade %}<h3>{{ grade }}</h3>{% endif %}
+
+    <form method="GET" class="row g-3 mb-4 align-items-end">
+        {% if current_user.role == 'admin' %}
+        <div class="col-md-2">
+            <select name="school_id" class="form-select" onchange="this.form.submit()">
+                <option value="">Select School</option>
+                {% for s in schools %}
+                    <option value="{{ s.id }}" {% if request.args.get('school_id')|int == s.id %}selected{% endif %}>{{ s.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+
+        {% if current_user.role in ['admin','principal'] %}
+        <div class="col-md-2">
+            <select name="grade" class="form-select" onchange="this.form.submit()">
+                {% for g in grades %}
+                    <option value="{{ g }}" {% if g == grade %}selected{% endif %}>{{ g }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+
+        <div class="col-md-2">
+            <select name="term" class="form-select">
+                {% for t in terms %}
+                    <option value="{{ t }}" {% if t == selected_term %}selected{% endif %}>{{ t }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <select name="exam" class="form-select">
+                {% for e in exams %}
+                    <option value="{{ e }}" {% if e == exam %}selected{% endif %}>{{ e }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <select name="year" class="form-control">
+                <option value="">Year</option>
+                {% for y in range(2021, 2031) %}
+                    <option value="{{ y }}" {% if y|string == selected_year %}selected{% endif %}>{{ y }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="col-md-2">
+            <button class="btn btn-primary w-100">Filter</button>
+        </div>
+    </form>
+
+    {% if not school_name and current_user.role == 'admin' %}
+        <div class="alert alert-warning">Please select a school to view the report.</div>
+    {% else %}
+        {% for res in results %}
+        <div class="card p-3 shadow-sm mb-4">
+            <h5>{{ res.subject }}</h5>
+            <table class="table table-sm table-bordered">
+                <thead>
+                    <tr>
+                        <th>EE (Exceeding)</th>
+                        <th>ME (Meeting)</th>
+                        <th>AE (Approaching)</th>
+                        <th>BE (Below)</th>
+                        <th>Total Students</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>{{ res.EE }}</td>
+                        <td>{{ res.ME }}</td>
+                        <td>{{ res.AE }}</td>
+                        <td>{{ res.BE }}</td>
+                        <td>{{ res.total }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        {% endfor %}
+    {% endif %}
+</div>
+
+<a href="{{ url_for('reports.reports_cbc_excel', **request.args) }}" class="btn btn-success mt-3">
+    📥 Download Excel Report
+</a>
+<button class="btn btn-danger mt-3" onclick="exportPDF()">📄 Export to PDF</button>
+
+<script src="https://cdn.jsdelivr.net/npm/html2canvas"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script>
+async function exportPDF() {
+    const element = document.getElementById("reportExportArea");
+    if (!element) { alert("Export area not found"); return; }
+    const canvas = await html2canvas(element, { scale: 2 });
+    const imgData = canvas.toDataURL("image/png");
+    const pdf = new window.jspdf.jsPDF("p", "mm", "a4");
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const imgWidth = pageWidth;
+    const imgHeight = canvas.height * imgWidth / canvas.width;
+    let heightLeft = imgHeight;
+    let position = 0;
+    pdf.text("CBC Grade Report", 10, 10);
+    pdf.text(new Date().toLocaleString(), 10, 16);
+    pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+    heightLeft -= 297;
+    while (heightLeft > 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+        heightLeft -= 297;
+    }
+    pdf.save("cbc_report.pdf");
+}
+</script>
+{% endblock %}

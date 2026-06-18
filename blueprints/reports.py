@@ -1,5 +1,6 @@
 # Reports blueprint
-from flask import Blueprint, render_template, request, abort, send_file
+from flask import (Blueprint, render_template, request, abort,
+                   send_file, flash, redirect, url_for)
 from flask_login import login_required, current_user
 from extensions import db
 from models import School, Student, Subject, Mark
@@ -7,6 +8,7 @@ from sqlalchemy import func
 import pandas as pd
 import io
 from collections import defaultdict
+from utils.helpers import cbc_grade
 
 reports_bp = Blueprint('reports', __name__)
 
@@ -525,6 +527,90 @@ def reports_student():
         grade=grade
     )
 
+@reports_bp.route('/reports/cbc')
+@login_required
+def reports_cbc():
+    if current_user.role not in ['admin', 'principal', 'teacher']:
+        abort(403)
+
+    selected_term = request.args.get('term', 'Term 1')
+    selected_year = request.args.get('year', '2026')
+    exam = request.args.get('exam', 'Exam 1')
+
+    # ---- Scoping ----
+    if current_user.role == 'admin':
+        school_id = request.args.get('school_id')
+        grade = request.args.get('grade', 'Grade 1')
+    elif current_user.role == 'principal':
+        school_id = current_user.school_id
+        grade = request.args.get('grade', 'Grade 1')
+    else:  # teacher
+        school_id = current_user.school_id
+        grade = current_user.grade
+
+    # ---- Helper to apply common filters + approved only ----
+    def apply_filters(query):
+        if selected_term:
+            query = query.filter(Mark.term == selected_term)
+        if selected_year:
+            try:
+                query = query.filter(Mark.year == int(selected_year))
+            except ValueError:
+                pass
+        if exam:
+            query = query.filter(Mark.exam == exam)
+        # query = query.filter(Mark.status == 'Approved')
+        return query
+
+    results = []
+    if school_id:
+        # Get subjects for the selected grade
+        subjects = Subject.query.filter_by(grade=grade).order_by(Subject.name).all()
+        for subj in subjects:
+            marks = apply_filters(Mark.query).filter(
+                Mark.subject_id == subj.id
+            ).join(Student).filter(Student.school_id == int(school_id)).all()
+
+            counts = {'EE': 0, 'ME': 0, 'AE': 0, 'BE': 0}
+            total = 0
+            for m in marks:
+                level = cbc_grade(m.score)
+                if level:
+                    counts[level] += 1
+                    total += 1
+            results.append({
+                'subject': subj.name,
+                'EE': counts['EE'],
+                'ME': counts['ME'],
+                'AE': counts['AE'],
+                'BE': counts['BE'],
+                'total': total
+            })
+
+    # ---- Determine school name for heading ----
+    school_name = None
+    if school_id:
+        school = School.query.get(int(school_id))
+        if school:
+            school_name = school.name
+
+    schools = School.query.all() if current_user.role == 'admin' else []
+    all_grades = ALL_GRADES
+    terms = TERMS
+    exams = EXAMS
+
+    return render_template('cbc_reports.html',
+                           results=results,
+                           selected_term=selected_term,
+                           selected_year=selected_year,
+                           exam=exam,
+                           school_name=school_name,
+                           grade=grade,
+                           schools=schools,
+                           grades=all_grades,
+                           terms=terms,
+                           exams=exams)
+
 @reports_bp.route('/student/<int:student_id>/term_report')
 @login_required
 def student_term_report(student_id):
@@ -639,3 +725,80 @@ def student_term_report(student_id):
         overall_rank=overall_rank,
         overall_class_size=overall_class_size
     )
+
+@reports_bp.route('/reports/cbc/excel')
+@login_required
+def reports_cbc_excel():
+    if current_user.role not in ['admin', 'principal', 'teacher']:
+        abort(403)
+
+    selected_term = request.args.get('term', 'Term 1')
+    selected_year = request.args.get('year', '2026')
+    exam = request.args.get('exam', 'Exam 1')
+
+    if current_user.role == 'admin':
+        school_id = request.args.get('school_id')
+        grade = request.args.get('grade', 'Grade 1')
+    elif current_user.role == 'principal':
+        school_id = current_user.school_id
+        grade = request.args.get('grade', 'Grade 1')
+    else:
+        school_id = current_user.school_id
+        grade = current_user.grade
+
+    def apply_filters(query):
+        if selected_term:
+            query = query.filter(Mark.term == selected_term)
+        if selected_year:
+            try:
+                query = query.filter(Mark.year == int(selected_year))
+            except ValueError:
+                pass
+        if exam:
+            query = query.filter(Mark.exam == exam)
+        # query = query.filter(Mark.status == 'Approved')
+        return query
+
+    rows = []
+    if school_id:
+        subjects = Subject.query.filter_by(grade=grade).order_by(Subject.name).all()
+        for subj in subjects:
+            marks = apply_filters(Mark.query).filter(
+                Mark.subject_id == subj.id
+            ).join(Student).filter(Student.school_id == int(school_id)).all()
+            counts = {'EE': 0, 'ME': 0, 'AE': 0, 'BE': 0}
+            for m in marks:
+                level = cbc_grade(m.score)
+                if level:
+                    counts[level] += 1
+            rows.append({
+                'Subject': subj.name,
+                'EE': counts['EE'],
+                'ME': counts['ME'],
+                'AE': counts['AE'],
+                'BE': counts['BE'],
+                'Total Students': sum(counts.values())
+            })
+
+    df = pd.DataFrame(rows)
+
+    # Build Excel with headers
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        workbook = writer.book
+        sheet = workbook.create_sheet("CBC Report", 0)
+        school_name = School.query.get(int(school_id)).name if school_id else "All Schools"
+        sheet.cell(row=1, column=1, value="School:")
+        sheet.cell(row=1, column=2, value=school_name)
+        sheet.cell(row=2, column=1, value="Grade:")
+        sheet.cell(row=2, column=2, value=grade)
+        sheet.cell(row=2, column=3, value="Term:")
+        sheet.cell(row=2, column=4, value=selected_term)
+        sheet.cell(row=2, column=5, value="Exam:")
+        sheet.cell(row=2, column=6, value=exam)
+        sheet.cell(row=2, column=7, value="Year:")
+        sheet.cell(row=2, column=8, value=selected_year if selected_year else "All")
+        df.to_excel(writer, sheet_name="CBC Report", startrow=3, index=False)
+    output.seek(0)
+    return send_file(output, download_name='cbc_report.xlsx', as_attachment=True,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')

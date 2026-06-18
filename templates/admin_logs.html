@@ -12,7 +12,9 @@
     <tbody>
         {% for log in logs %}
         <tr>
-            <td>{{ log.name }}</td>
+            <td><a href="{{ url_for('view_log', filename=log.name) }}" target="_blank">
+                    {{ log.name }}
+                </a></td>
             <td>{{ log.size }}</td>
             <td>
                 <a href="{{ url_for('download_log', filename=log.name) }}" class="btn btn-sm btn-primary">

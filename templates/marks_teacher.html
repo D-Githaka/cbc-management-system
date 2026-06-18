@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>My Submissions</h2>
+<table class="table">
+    <thead>
+        <tr>
+            <th>Grade</th>
+            <th>Term</th>
+            <th>Year</th>
+            <th>Exam</th>
+            <th>Status</th>
+            <th>Submitted</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for s in submissions %}
+        <tr>
+            <td>{{ s.grade }}</td>
+            <td>{{ s.term }}</td>
+            <td>{{ s.year }}</td>
+            <td>{{ s.exam }}</td>
+            <td>
+                {% if s.status == 'Approved' %}
+                    <span class="badge bg-success">Approved</span>
+                {% else %}
+                    <span class="badge bg-warning">Pending</span>
+                {% endif %}
+            </td>
+            <td>{{ s.submitted_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<a href="{{ url_for('marks.enter_marks') }}" class="btn btn-primary">Enter New Marks</a>
+{% endblock %}

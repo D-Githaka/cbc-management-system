@@ -4,12 +4,43 @@ from flask_login import login_required, current_user
 from extensions import db
 from models import School, Student, Subject, Mark
 from utils.helpers import cbc_grade
+from sqlalchemy import func
 
 marks_bp = Blueprint('marks', __name__)
 
 @marks_bp.route('/marks')
 @login_required
 def marks():
+    # For teachers: show their own submissions
+    if current_user.role == 'teacher':
+        subs = db.session.query(
+            Student.grade,
+            Mark.term,
+            Mark.year,
+            Mark.exam,
+            func.count(Mark.id).label('total'),
+            func.sum(db.case((Mark.status == 'Approved', 1), else_=0)).label('approved'),
+            func.min(Mark.created_at).label('submitted_at')
+        ).join(Student, Mark.student_id == Student.id)\
+         .filter(Mark.submitted_by == current_user.id)\
+         .group_by(Student.grade, Mark.term, Mark.year, Mark.exam)\
+         .all()
+
+        submissions = []
+        for row in subs:
+            submissions.append({
+                'grade': row.grade,
+                'term': row.term,
+                'year': row.year,
+                'exam': row.exam,
+                'total': row.total,
+                'approved': row.approved,
+                'status': 'Approved' if row.approved == row.total else 'Pending',
+                'submitted_at': row.submitted_at
+            })
+        return render_template('marks_teacher.html', submissions=submissions)
+
+    # For admin/principal: existing logic
     schools = School.query.all()
     return render_template('marks.html', schools=schools)
 
@@ -147,10 +178,13 @@ def save_marks():
             student_id=student.id,
             subject_id=int(subject_id),
             term=term,
-            year=year
+            year=year,
+            exam=exam
         ).first()
 
         if existing:
+            if existing.status == 'Approved':
+                return jsonify({"error": "Cannot edit approved marks."}), 403
             existing.score = score
             existing.cbc_level = grade_level
         else:
@@ -159,9 +193,11 @@ def save_marks():
                 subject_id=int(subject_id),
                 score=score,
                 term=term,
-                exam=exam,
                 year=year,
-                cbc_level=grade_level
+                exam=exam,
+                cbc_level=grade_level,
+                status='Pending',          # <-- NEW
+                submitted_by=current_user.id 
             ))
 
     try:

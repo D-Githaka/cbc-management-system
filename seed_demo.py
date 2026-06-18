@@ -69,24 +69,32 @@ def seed_demo_data():
     total_students = 0
     total_marks = 0
 
+    # Pre‑compute hashed passwords (do once, not per school)
+    principal_pw = generate_password_hash("principal123")
+    teacher_pw = generate_password_hash("teacher123")
+
     for school in schools:
-        # Create principal for the school
-        principal = User(
+        # Batch users
+        users = []
+        users.append(User(
             username=f"principal{school.id}",
-            password=generate_password_hash("principal123"),
+            password=principal_pw,
             role="principal",
             school_id=school.id
-        )
-        db.session.add(principal)
-        # Create 3 demo teachers per school
+        ))
+
         for t in range(1, 4):
-            teacher = User(
+            users.append(User(
                 username=f"teacher{school.id}_{t}",
-                password=generate_password_hash("teacher123"),
+                password=teacher_pw,
                 role="teacher",
-                school_id=school.id
-            )
-            db.session.add(teacher)
+                school_id=school.id,
+                grade=random.choice(grades)   # ← ADD THIS
+            ))
+        db.session.add_all(users)          # insert all 4 users at once
+
+        students_batch = []
+        marks_batch = []
 
         for grade in grades:
             subjects = subjects_by_grade.get(grade, [])
@@ -94,18 +102,20 @@ def seed_demo_data():
                 continue
             for _ in range(50):
                 gender = random.choice(['M','F'])
-                name = random_student_name(gender)
                 student = Student(
-                    name=name, grade=grade, gender=gender,
+                    name=random_student_name(gender),
+                    grade=grade,
+                    gender=gender,
                     school_id=school.id
                 )
                 db.session.add(student)
-                db.session.flush()
+                db.session.flush()           # we need student.id for marks
+
                 for subject in subjects:
                     for term in terms:
                         for exam in exams:
                             score = random.randint(20, 100)
-                            mark = Mark(
+                            marks_batch.append(Mark(
                                 student_id=student.id,
                                 subject_id=subject.id,
                                 score=score,
@@ -113,13 +123,25 @@ def seed_demo_data():
                                 year=year,
                                 exam=exam,
                                 cbc_level=cbc_grade(score)
-                            )
-                            db.session.add(mark)
-                            total_marks += 1
+                            ))
+
+                # Flush marks in larger batches (every 500 marks or so)
+                if len(marks_batch) >= 500:
+                    db.session.add_all(marks_batch)
+                    db.session.flush()
+                    total_marks += len(marks_batch)
+                    marks_batch.clear()
+
                 total_students += 1
 
-        db.session.commit()
-        print(f"  ✔ School '{school.name}' – {total_students} students so far...")
+    # Insert any remaining marks
+    if marks_batch:
+        db.session.add_all(marks_batch)
+        db.session.flush()
+        total_marks += len(marks_batch)
+        marks_batch.clear()
+
+    db.session.commit()
 
     # Create admin user if it doesn't exist
     if not User.query.filter_by(username='admin').first():

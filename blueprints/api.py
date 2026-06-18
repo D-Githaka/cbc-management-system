@@ -1,4 +1,3 @@
-import uuid
 from flask import Blueprint, request, jsonify
 from flask_login import login_required, current_user
 from models import School, Student, Subject, Mark
@@ -13,16 +12,14 @@ api_bp = Blueprint('api', __name__)
 @cache.cached(timeout=900, query_string=True)
 def api_analytics():
     grade = request.args.get('grade')
-    school_id = request.args.get('school_id')
-    student_id = request.args.get('student_id')
     year = request.args.get('year')
     term = request.args.get('term')
-    
+    student_id = request.args.get('student_id')
+
     if current_user.role != "admin":
         school_id = current_user.school_id
     else:
         school_id = request.args.get('school_id')
-        grade = request.args.get('grade')
 
     query = db.session.query(
         Subject.name.label("subject"),
@@ -30,38 +27,28 @@ def api_analytics():
         School.name.label("school"),
         Student.id.label("student_id"),
         Student.name.label("student_name"),
-        db.func.avg(Mark.score).label("avg_score")
+        func.avg(Mark.score).label("avg_score")
     ).select_from(Mark)\
      .join(Subject, Mark.subject_id == Subject.id)\
      .join(Student, Mark.student_id == Student.id)\
      .join(School, Student.school_id == School.id)
 
-    # Convert IDs to integers
     if school_id:
         query = query.filter(School.id == int(school_id))
-
     if grade:
         query = query.filter(Student.grade == grade)
-
     if student_id:
         query = query.filter(Student.id == int(student_id))
-
-    # Convert Year to integer
     if year:
         try:
             query = query.filter(Mark.year == int(year))
         except ValueError:
-            pass # Ignore if the user typed "Twenty Twenty Four" by accident
-
+            pass
     if term:
         query = query.filter(Mark.term == term)
 
     results = query.group_by(
-        Subject.name,
-        Student.grade,
-        School.name,
-        Student.id,
-        Student.name
+        Subject.name, Student.grade, School.name, Student.id, Student.name
     ).all()
 
     data = [
@@ -76,10 +63,10 @@ def api_analytics():
         for r in results
     ]
 
-    # Return data with headers to prevent the browser from caching old data
     response = jsonify({"data": data})
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     return response
+
 
 @api_bp.route('/api/grades')
 @login_required
@@ -92,11 +79,9 @@ def get_grades():
     query = db.session.query(Student.grade).distinct()
     if school_id:
         query = query.filter(Student.school_id == school_id)
-
     grades = [g[0] for g in query.all()]
-
-
     return {"grades": grades}
+
 
 @api_bp.route('/api/students')
 @login_required
@@ -105,8 +90,6 @@ def get_students():
         school_id = current_user.school_id
     else:
         school_id = request.args.get('school_id')
-
-
     grade = request.args.get('grade')
 
     query = Student.query
@@ -123,6 +106,7 @@ def get_students():
         ]
     }
 
+
 @api_bp.route('/api/school_overview')
 @login_required
 @cache.cached(timeout=900, query_string=True)
@@ -131,7 +115,6 @@ def api_school_overview():
     year = request.args.get('year')
     term = request.args.get('term')
 
-    # Restrict non‑admin users to their own school
     if current_user.role != "admin":
         school_id = current_user.school_id
 
@@ -157,10 +140,8 @@ def api_school_overview():
     avg = round(result.avg_score, 2) if result.avg_score else 0
     students = result.student_count if result.student_count else 0
 
-    return jsonify({
-        "avg_score": avg,
-        "student_count": students
-    })
+    return jsonify({"avg_score": avg, "student_count": students})
+
 
 @api_bp.route('/api/add_student_with_marks', methods=['POST'])
 @login_required
@@ -170,55 +151,38 @@ def add_student_with_marks():
     grade = data.get("grade")
     term = data.get("term")
     year = data.get("year")
+    exam = data.get("exam", "Exam 1")          # <-- was missing
     marks = data.get("marks", {})
-    school_id = data.get("school_id") if current_user.role == "admin" else current_user.school_id
+
+    if current_user.role == "admin":
+        school_id = data.get("school_id")
+    else:
+        school_id = current_user.school_id
 
     if not name or not grade or not term or not year:
         return jsonify({"error": "Missing required fields"}), 400
 
-    # --- Admission number ---
-    adm = data.get('admission_number', '').strip()
-    school = School.query.get(int(school_id)) if school_id else None
+    # Check duplicate
+    existing = Student.query.filter_by(
+        name=name, grade=grade, school_id=school_id
+    ).first()
+    if existing:
+        return jsonify({"error": "Student already exists in this grade"}), 400
 
-    if not adm:
-        if school:
-            last = Student.query.filter(
-                Student.admission_number.like(f'{school.entry}-%')
-            ).order_by(Student.id.desc()).first()
-            next_num = 1
-            if last:
-                try:
-                    next_num = int(last.admission_number.split('-')[-1]) + 1
-                except:
-                    next_num = 1
-            adm = f"{school.entry}-ADM-{next_num:04d}"
-        else:
-            adm = f"ADM-{uuid.uuid4().hex[:6].upper()}"
-    else:
-        if Student.query.filter_by(admission_number=adm).first():
-            return jsonify({"error": "Admission number already exists"}), 400
-
-    # Create student
     student = Student(
         name=name,
         grade=grade,
         gender=data.get('gender', 'M'),
-        admission_number=adm,
         school_id=school_id
     )
     db.session.add(student)
     db.session.flush()
 
-    # -----------------------------
-    # Save marks
-    # -----------------------------
     for subject_id, score in marks.items():
-
         try:
             score = float(score)
-        except:
+        except ValueError:
             return jsonify({"error": f"Invalid score for subject {subject_id}"}), 400
-
         if score < 0 or score > 100:
             return jsonify({"error": "Score must be between 0 and 100"}), 400
 
@@ -228,14 +192,19 @@ def add_student_with_marks():
             score=score,
             term=term,
             year=year,
-            cbc_level=cbc_grade(score)
+            exam=exam,
+            cbc_level=cbc_grade(score),
+            status='Pending',
+            submitted_by=current_user.id
         ))
 
-    # -----------------------------
-    # Commit all changes
-    # -----------------------------
     db.session.commit()
-    return jsonify({"status": "success", "student_id": student.id, "admission_number": adm})
+    return jsonify({
+        "status": "success",
+        "student_id": student.id,
+        "message": "Student and marks saved successfully"
+    })
+
 
 @api_bp.route('/api/school_comparison')
 @login_required
@@ -244,7 +213,7 @@ def school_comparison():
     year = request.args.get('year')
     term = request.args.get('term')
     exam = request.args.get('exam')
-    selected_school_id = request.args.get('school_id')   # optional, to highlight
+    selected_school_id = request.args.get('school_id')
 
     if not grade:
         return jsonify({"error": "grade is required"}), 400
@@ -278,8 +247,6 @@ def school_comparison():
         }
         for r in results
     ]
-
-    # Sort by average score descending
     data.sort(key=lambda x: x['avg_score'], reverse=True)
 
     return jsonify({"data": data, "selected_school_id": selected_school_id})

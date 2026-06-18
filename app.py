@@ -70,15 +70,17 @@ def create_app():
     login_manager.init_app(app)
     login_manager.login_view = "login"
 
-    with app.app_context():
-        db.create_all()
-        seed_subjects()
+    # with app.app_context():
+        # db.create_all()
+        # seed_subjects()
 
     # ---------- Blueprints ----------
     from blueprints.reports import reports_bp
     from blueprints.api import api_bp
     from blueprints.marks import marks_bp
     from blueprints.main import main_bp
+    from blueprints.approvals import approvals_bp
+    app.register_blueprint(approvals_bp)
     app.register_blueprint(main_bp)
     app.register_blueprint(reports_bp)
     app.register_blueprint(api_bp)
@@ -154,14 +156,17 @@ def create_app():
             user_info = "user:system (seed)"
         changes = []
         for attr in mapper.column_attrs:
-            hist = attr.get_history(target, attr.key)
+            try:
+                hist = attr.get_history(target, attr.key)
+            except AttributeError:
+                # Some column types (e.g. Boolean) may not support get_history
+                continue
             if hist.has_changes():
                 old = hist.deleted[0] if hist.deleted else None
                 new = hist.added[0] if hist.added else None
                 changes.append(f"{attr.key}: {old} -> {new}")
         if changes:
             audit_logger.info(f"{user_info} - UPDATE {target.__class__.__name__} id={target.id} changes: {', '.join(changes)}")
-
     def log_delete(mapper, connection, target):
         if has_request_context():
             user_info = f"user:{g.username} ({g.user_role})"
@@ -202,6 +207,18 @@ def create_app():
             abort(404)
         return send_file(filepath, as_attachment=True, download_name=safe_filename, mimetype='text/plain')
 
+    @app.route('/admin/logs/view/<filename>')
+    @login_required
+    def view_log(filename):
+        if current_user.role != 'admin':
+            abort(403)
+        safe_filename = os.path.basename(filename)
+        filepath = os.path.join(logs_dir, safe_filename)
+        if not os.path.isfile(filepath):
+            abort(404)
+        # Return the file content as plain text (rendered in browser)
+        return send_file(filepath, mimetype='text/plain', as_attachment=False)
+        
     @app.route('/admin/users', methods=['GET', 'POST'])
     @login_required
     def manage_users():
@@ -229,64 +246,8 @@ def create_app():
         school_id = request.form.get('school_id')
         school_id = int(school_id) if school_id else None
         grade = request.form.get('grade')
-        employee_id = request.form.get('employee_id', '').strip()
-        if not employee_id:
-            # Auto‑generate based on role
-            if role == 'admin':
-                # Find the highest existing admin ID
-                last_admin = User.query.filter(User.role == 'admin', User.employee_id.like('ADM-%')).order_by(User.id.desc()).first()
-                next_num = 1
-                if last_admin:
-                    try:
-                        next_num = int(last_admin.employee_id.split('-')[1]) + 1
-                    except:
-                        next_num = 1
-                employee_id = f"ADM-{next_num:03d}"
-            else:
-                school = School.query.get(school_id)
-                if school:
-                    # Find highest existing staff ID for this school
-                    last_emp = User.query.filter(User.school_id == school_id, User.employee_id.like(f'{school.entry}-%')).order_by(User.id.desc()).first()
-                    next_num = 1
-                    if last_emp:
-                        try:
-                            next_num = int(last_emp.employee_id.split('-')[-1]) + 1
-                        except:
-                            next_num = 1
-                    employee_id = f"{school.entry}-EMP-{next_num:03d}"
-                else:
-                    flash("School is required for non‑admin users.", "danger")
-                    return redirect(url_for('manage_users'))
-        else:
-            # Check global uniqueness
-            existing = User.query.filter_by(employee_id=employee_id).first()
-            if existing:
-                flash('A user with that Staff ID already exists.', 'danger')
-                return redirect(url_for('manage_users'))
-        if not employee_id and role in ['teacher', 'principal']:
-            # Generate based on school
-            school = School.query.get(school_id)
-            if school:
-                # find max existing employee_id for that school
-                existing = User.query.filter(
-                    User.school_id == school_id,
-                    User.employee_id.isnot(None)
-                ).order_by(User.id.desc()).first()
-                last_num = 1
-                if existing and existing.employee_id:
-                    # e.g. SCH-001-EMP-003 → extract 3
-                    try:
-                        last_num = int(existing.employee_id.split('-')[-1]) + 1
-                    except:
-                        last_num = 1
-                employee_id = f"{school.entry}-EMP-{last_num:03d}"
-        elif employee_id and role in ['teacher', 'principal']:
-            # check uniqueness per school
-            existing = User.query.filter_by(school_id=school_id, employee_id=employee_id).first()
-            if existing:
-                flash('An employee with that ID already exists in this school.', 'danger')
-                return redirect(url_for('manage_users'))
-        # … then create the user with employee_id
+
+        # ---- Validation ----
         if current_user.role == 'principal':
             if role != 'teacher':
                 flash("Principal can only create teacher accounts.", "danger")
@@ -302,10 +263,11 @@ def create_app():
             flash("Grade is required for teachers.", "danger")
             return redirect(url_for('manage_users'))
 
+        # ---- Generate random password ----
         def generate_password(length=8):
             return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
-
         password_plain = generate_password()
+
         user = User(
             username=username,
             password=generate_password_hash(password_plain),
@@ -317,6 +279,73 @@ def create_app():
         db.session.commit()
 
         return render_template("user_created.html", username=username, password=password_plain)
+
+    @app.route('/admin/users/edit/<int:id>', methods=['GET', 'POST'])
+    @login_required
+    def edit_user(id):
+        if current_user.role not in ['admin', 'principal']:
+            abort(403)
+
+        target = db.session.get(User, id)
+        if not target:
+            flash('User not found.', 'danger')
+            return redirect(url_for('manage_users'))
+
+        # Principal can only edit teachers in their own school
+        if current_user.role == 'principal':
+            if target.role != 'teacher' or target.school_id != current_user.school_id:
+                flash('You can only edit teachers from your own school.', 'danger')
+                return redirect(url_for('manage_users'))
+
+        # Prevent editing superadmin by anyone
+        if getattr(target, 'is_superadmin', False) and not getattr(current_user, 'is_superadmin', False):
+            flash('You cannot edit the super admin account.', 'danger')
+            return redirect(url_for('manage_users'))
+
+        # Build schools list for the dropdown
+        if current_user.role == 'admin':
+            schools = School.query.all()
+        else:
+            schools = [School.query.get(current_user.school_id)]
+
+        if request.method == 'POST':
+            new_username = request.form.get('username', '').strip()
+            new_role = request.form.get('role', target.role)
+            new_school_id = request.form.get('school_id')
+            new_grade = request.form.get('grade')
+            new_password = request.form.get('password', '').strip()
+
+            if new_username and new_username != target.username:
+                existing = User.query.filter_by(username=new_username).first()
+                if existing:
+                    flash('Username already taken.', 'danger')
+                    return redirect(url_for('edit_user', id=id))
+                target.username = new_username
+
+            # Only admin can change roles
+            if current_user.role == 'admin':
+                target.role = new_role
+
+            if new_school_id and current_user.role == 'admin':
+                target.school_id = int(new_school_id)
+
+            if new_role == 'teacher' and new_grade:
+                target.grade = new_grade
+            else:
+                target.grade = None
+
+            if new_password:
+                target.password = generate_password_hash(new_password)
+
+            try:
+                db.session.commit()
+                flash('User updated.', 'success')
+            except Exception as e:
+                db.session.rollback()
+                flash(f'Error: {str(e)}', 'danger')
+            return redirect(url_for('manage_users'))
+
+        return render_template('edit_user.html', user=target, schools=schools)
 
     @app.route('/admin/users/delete/<int:id>', methods=['POST'])
     @login_required
