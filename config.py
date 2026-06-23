@@ -2,14 +2,14 @@ import os
 from datetime import timedelta
 
 class Config:
-    SECRET_KEY = os.environ.get('SECRET_KEY', '7438')
+    SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-key')
     basedir = os.path.abspath(os.path.dirname(__file__))
     SQLALCHEMY_DATABASE_URI = 'sqlite:///' + os.path.join(basedir, 'database.db')
     MAX_CONTENT_LENGTH = 2 * 1024 * 1024  # 2 MB
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     REMEMBER_COOKIE_DURATION = timedelta(days=7)
     SESSION_PERMANENT = False
-    REMEMBER_COOKIE_SECURE = os.environ.get('FLASK_ENV') == 'production'
+    REMEMBER_COOKIE_SECURE = os.environ.get('FLASK_ENV') == True
     ADMIN_SECRET = os.environ.get('ADMIN_SECRET_KEY')
 
     CACHE_TYPE = 'FileSystemCache'
