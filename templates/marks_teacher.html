@@ -10,6 +10,7 @@
             <th>Exam</th>
             <th>Status</th>
             <th>Submitted</th>
+            <th>Action</th>   <!-- new column -->
         </tr>
     </thead>
     <tbody>
@@ -27,9 +28,50 @@
                 {% endif %}
             </td>
             <td>{{ s.submitted_at.strftime('%Y-%m-%d %H:%M') }}</td>
+            <td>
+                {# Teacher can delete their own submissions – optionally only if pending #}
+                <button class="btn btn-sm btn-danger delete-btn" 
+                        data-teacher="{{ current_user.id }}"
+                        data-grade="{{ s.grade }}"
+                        data-term="{{ s.term }}"
+                        data-year="{{ s.year }}"
+                        data-exam="{{ s.exam }}">Delete</button>
+            </td>
         </tr>
         {% endfor %}
     </tbody>
 </table>
-<a href="{{ url_for('marks.enter_marks') }}" class="btn btn-primary">Enter New Marks</a>
+  <div class="d-flex gap-2 mt-3">
+      <button class="btn btn-dark">Enter Marks</button>
+      <a id="addStudentLink" href="#" class="btn btn-success d-none">➕ Add Student</a>
+      <a href="{{ url_for('main.upload_csv') }}" class="btn btn-outline-secondary">
+          📤 Upload CSV
+      </a>
+  </div>
+<script>
+    
+document.querySelectorAll('.delete-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        if (!confirm('Delete this submission? This will permanently remove all marks. Are you sure?')) return;
+        const res = await fetch('/approvals/delete', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                teacher_id: btn.dataset.teacher,
+                grade: btn.dataset.grade,
+                term: btn.dataset.term,
+                year: btn.dataset.year,
+                exam: btn.dataset.exam
+            })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    });
+});    
+
+</script>
 {% endblock %}

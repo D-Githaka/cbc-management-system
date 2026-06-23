@@ -90,7 +90,7 @@ def edit_school(id):
 @role_required('admin')
 def delete_school(id):
     school = School.query.get_or_404(id)
-    if school.students:
+    if school.students.count() > 0:
         flash('Cannot delete school with students. Remove students first.', 'danger')
         return redirect(url_for('main.schools'))
     db.session.delete(school)
@@ -396,22 +396,46 @@ def upload_csv():
         else:
             school_id = current_user.school_id
 
+        # ---- PRE-LOAD all subjects once ----
+        all_subjects = Subject.query.all()
+        subjects_by_grade = {}
+        for sub in all_subjects:
+            subjects_by_grade.setdefault(sub.grade, []).append((sub.name, sub.id))
+        # Convert to dict for O(1) lookup: grade -> {subject_name: subject_id}
+        subjects_dict_by_grade = {
+            g: {name: id for name, id in lst}
+            for g, lst in subjects_by_grade.items()
+        }
+
+        # ---- PRE-LOAD existing admission numbers for this school ----
+        existing_adms = set()
+        if school_id:
+            existing = Student.query.with_entities(Student.admission_number)\
+                                    .filter_by(school_id=school_id).all()
+            existing_adms = {adm[0] for adm in existing}
+
+        school = School.query.get(int(school_id)) if school_id else None
+
         success_count = 0
         error_rows = []
+        marks_to_add = []  # collect marks for bulk insert later
+
         for idx, row in enumerate(csv_reader, start=2):
             name = row.get('name', '').strip()
             grade = row.get('grade', '').strip()
             if not name or not grade:
                 continue
+
             gender = row.get('gender', 'M').strip().upper()
             if gender not in ('M', 'F'):
                 gender = 'M'
-            adm = row.get('admission_number', '').strip()
-            school = School.query.get(int(school_id)) if school_id else None
 
+            adm = row.get('admission_number', '').strip()
+
+            # ---- Admission number generation / validation ----
             if not adm:
-                # Auto‑generate
                 if school:
+                    # Auto‑generate: find highest existing number for this school
                     last = Student.query.filter(
                         Student.admission_number.like(f'{school.entry}-%')
                     ).order_by(Student.id.desc()).first()
@@ -423,16 +447,15 @@ def upload_csv():
                             next_num = 1
                     adm = f"{school.entry}-ADM-{next_num:04d}"
                 else:
-                    # Fallback (should not happen because school_id is always set)
                     adm = f"ADM-{uuid.uuid4().hex[:6].upper()}"
             else:
-                # Check global uniqueness
-                existing = Student.query.filter_by(admission_number=adm).first()
-                if existing:
+                # Check uniqueness (global or per-school – we use global set)
+                if adm in existing_adms:
                     error_rows.append(f'Row {idx}: admission number "{adm}" already exists.')
                     continue
+                existing_adms.add(adm)   # mark as used for subsequent rows
 
-            # … then create the student with admission_number=adm
+            # ---- Create student ----
             student = Student(
                 name=name,
                 grade=grade,
@@ -441,38 +464,49 @@ def upload_csv():
                 school_id=school_id
             )
             db.session.add(student)
-            db.session.flush()
+            db.session.flush()   # get student.id for marks
 
-            marks = {}
-            for col in row.keys():
-                if col not in ['name', 'grade'] and row[col].strip():
-                    subject = Subject.query.filter_by(name=col, grade=grade).first()
-                    if subject:
-                        try:
-                            score = float(row[col])
-                            if 0 <= score <= 100:
-                                marks[subject.id] = score
-                            else:
-                                error_rows.append(f'Row {idx}: score for {col} out of range (0-100).')
-                        except ValueError:
-                            error_rows.append(f'Row {idx}: score for {col} not a number.')
-                    else:
-                        error_rows.append(f'Row {idx}: subject "{col}" not found for {grade}.')
-
+            # ---- Process marks (using pre‑loaded subject dict) ----
             term = request.form.get('term')
             year = request.form.get('year')
-            if marks and term and year:
+            try:
+                year = int(year) if year else None
+            except ValueError:
+                error_rows.append('Invalid year, marks not saved.')
+                year = None
+
+            subject_dict = subjects_dict_by_grade.get(grade, {})
+            for col, value in row.items():
+                if col in ['name', 'grade', 'gender', 'admission_number'] or not value.strip():
+                    continue
+                subj_id = subject_dict.get(col)
+                if not subj_id:
+                    error_rows.append(f'Row {idx}: subject "{col}" not found for {grade}.')
+                    continue
                 try:
-                    year = int(year)
+                    score = float(value)
+                    if not (0 <= score <= 100):
+                        error_rows.append(f'Row {idx}: score for {col} out of range (0-100).')
+                        continue
                 except ValueError:
-                    error_rows.append('Invalid year, marks not saved.')
-                else:
-                    for sub_id, score in marks.items():
-                        db.session.add(Mark(student_id=student.id, subject_id=sub_id,
-                                           score=score, term=term, year=year,
-                                           cbc_level=cbc_grade(score)))
+                    error_rows.append(f'Row {idx}: score for {col} not a number.')
+                    continue
+
+                if term and year is not None:
+                    marks_to_add.append(Mark(
+                        student_id=student.id,
+                        subject_id=subj_id,
+                        score=score,
+                        term=term,
+                        year=year,
+                        cbc_level=cbc_grade(score)
+                    ))
 
             success_count += 1
+
+        # ---- Bulk insert marks ----
+        if marks_to_add:
+            db.session.bulk_save_objects(marks_to_add)
 
         try:
             db.session.commit()

@@ -42,10 +42,12 @@
     </div>
     <div class="col">
 
-        <select name="year" class="form-select">
+       <select name="year" class="form-select">
           <option value="">Year</option>
           {% for y in range(2021, 2031) %}
-            <option value="{{ y }}">{{ y }}</option>
+            <option value="{{ y }}" {% if y|string == year|string %}selected{% endif %}>
+              {{ y }}
+            </option>
           {% endfor %}
         </select>
     </div>

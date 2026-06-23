@@ -23,7 +23,7 @@
                 <a href="{{ url_for('main.analytics', school_id=school.id) }}">{{ school.name }}</a>
             </td>
             <td>{{ school.type }}</td>
-            <td>{{ school.students|length }}</td>
+            <td>{{ school.students.count() }}</td>
             <td>
                 <div class="btn-group" role="group">
                     <a href="{{ url_for('main.school_dashboard', school_id=school.id) }}" class="btn btn-sm btn-outline-primary">Dashboard</a>

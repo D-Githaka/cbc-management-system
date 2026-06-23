@@ -4,7 +4,7 @@ from flask import (Blueprint, render_template, request, abort,
 from flask_login import login_required, current_user
 from extensions import db
 from models import School, Student, Subject, Mark
-from sqlalchemy import func
+from sqlalchemy import func, case
 import pandas as pd
 import io
 from collections import defaultdict
@@ -151,7 +151,12 @@ def reports_school():
         for sd in student_data.values():
             sd['total'] = sum(v for v in sd['scores'].values() if v is not None)
 
-        # Summary rows
+        # ---- NEW: Sort by total descending and assign position ----
+        student_list = sorted(student_data.values(), key=lambda x: x['total'], reverse=True)
+        for idx, sd in enumerate(student_list, start=1):
+            sd['position'] = idx
+
+        # Summary rows (totals and averages) - unchanged
         totals_row = {subj: 0 for subj in subject_names}
         counts = {subj: 0 for subj in subject_names}
         for sd in student_data.values():
@@ -171,7 +176,7 @@ def reports_school():
             'school_reports.html',
             single_school=True,
             school=school,
-            student_data=list(student_data.values()),
+            student_data=student_list,           # now sorted with positions
             subject_names=subject_names,
             totals_row=totals_row,
             avg_row=avg_row,
@@ -392,7 +397,6 @@ def reports_school_excel():
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
-# ====================== STUDENT REPORTS ======================
 @reports_bp.route('/reports/student')
 @login_required
 def reports_student():
@@ -414,62 +418,66 @@ def reports_student():
         school_id = current_user.school_id
         grade = current_user.grade
 
-    # ---- Helper: top students by gender and school type ----
+    # ---- Helper: top students by gender and school type (optimised with window function) ----
     def get_top_students(gender, school_type):
-        results = []
-        # Base grade list query
-        grades_q = db.session.query(Student.grade).join(Mark).join(School).filter(
-            Student.gender == gender,
-            School.type == school_type
-        )
+        # Base query: total score per student for the given filters
+        base_query = db.session.query(
+            Student.id,
+            Student.name,
+            Student.grade,
+            Student.gender,
+            func.sum(Mark.score).label('total_score')
+        ).join(Mark, Mark.student_id == Student.id)\
+         .join(School, Student.school_id == School.id)\
+         .filter(Student.gender == gender, School.type == school_type)
+
         if school_id:
-            grades_q = grades_q.filter(Student.school_id == int(school_id))
+            base_query = base_query.filter(Student.school_id == int(school_id))
         if selected_term:
-            grades_q = grades_q.filter(Mark.term == selected_term)
+            base_query = base_query.filter(Mark.term == selected_term)
         if selected_year:
-            grades_q = grades_q.filter(Mark.year == int(selected_year))
+            try:
+                base_query = base_query.filter(Mark.year == int(selected_year))
+            except ValueError:
+                pass
         if exam:
-            grades_q = grades_q.filter(Mark.exam == exam)
+            base_query = base_query.filter(Mark.exam == exam)
         if grade:
-            grades_q = grades_q.filter(Student.grade == grade)
-        grades_list = [g[0] for g in grades_q.distinct().all()]
+            base_query = base_query.filter(Student.grade == grade)
 
-        for g in grades_list:
-            sub = db.session.query(
-                Student.id,
-                func.sum(Mark.score).label('total_score')
-            ).join(Mark).join(School).filter(
-                Student.grade == g,
-                Student.gender == gender,
-                School.type == school_type
-            )
-            if school_id:
-                sub = sub.filter(Student.school_id == int(school_id))
-            if selected_term:
-                sub = sub.filter(Mark.term == selected_term)
-            if selected_year:
-                sub = sub.filter(Mark.year == int(selected_year))
-            if exam:
-                sub = sub.filter(Mark.exam == exam)
-            sub = sub.group_by(Student.id).order_by(func.sum(Mark.score).desc()).limit(top_n).subquery()
+        base_query = base_query.group_by(Student.id, Student.name, Student.grade, Student.gender)
 
-            rows = db.session.query(
-                Student.id.label('student_id'),
-                Student.name.label('student_name'),
-                Student.grade.label('grade'),
-                Student.gender.label('gender'),
-                sub.c.total_score
-            ).join(sub, Student.id == sub.c.id).all()
+        # Use a window function to rank students within each grade
+        subq = base_query.subquery()
+        ranked = db.session.query(
+            subq.c.id,
+            subq.c.name,
+            subq.c.grade,
+            subq.c.gender,
+            subq.c.total_score,
+            func.row_number().over(
+                partition_by=subq.c.grade,
+                order_by=subq.c.total_score.desc()
+            ).label('rn')
+        ).subquery()
 
-            for r in rows:
-                results.append({
-                    'grade': r.grade,
-                    'student_id': r.student_id,
-                    'student_name': r.student_name,
-                    'gender': r.gender,
-                    'total_score': r.total_score
-                })
-        return results
+        # Fetch only the top N per grade
+        final_query = db.session.query(
+            ranked.c.id.label('student_id'),
+            ranked.c.name.label('student_name'),
+            ranked.c.grade,
+            ranked.c.gender,
+            ranked.c.total_score
+        ).filter(ranked.c.rn <= top_n).order_by(ranked.c.grade, ranked.c.total_score.desc())
+
+        results = final_query.all()
+        return [{
+            'grade': r.grade,
+            'student_id': r.student_id,
+            'student_name': r.student_name,
+            'gender': r.gender,
+            'total_score': r.total_score
+        } for r in results]
 
     top_male_public = get_top_students('M', 'Public')
     top_male_private = get_top_students('M', 'Private')
@@ -488,7 +496,10 @@ def reports_student():
     if selected_term:
         class_avg = class_avg.filter(Mark.term == selected_term)
     if selected_year:
-        class_avg = class_avg.filter(Mark.year == int(selected_year))
+        try:
+            class_avg = class_avg.filter(Mark.year == int(selected_year))
+        except ValueError:
+            pass
     if exam:
         class_avg = class_avg.filter(Mark.exam == exam)
     if school_id:
@@ -548,46 +559,30 @@ def reports_cbc():
         school_id = current_user.school_id
         grade = current_user.grade
 
-    # ---- Helper to apply common filters + approved only ----
-    def apply_filters(query):
-        if selected_term:
-            query = query.filter(Mark.term == selected_term)
-        if selected_year:
-            try:
-                query = query.filter(Mark.year == int(selected_year))
-            except ValueError:
-                pass
-        if exam:
-            query = query.filter(Mark.exam == exam)
-        # query = query.filter(Mark.status == 'Approved')
-        return query
-
     results = []
     if school_id:
-        # Get subjects for the selected grade
-        subjects = Subject.query.filter_by(grade=grade).order_by(Subject.name).all()
-        for subj in subjects:
-            marks = apply_filters(Mark.query).filter(
-                Mark.subject_id == subj.id
-            ).join(Student).filter(Student.school_id == int(school_id)).all()
+        # Use the helper to apply filters (optional, but we can inline)
+        level_counts = db.session.query(
+            Subject.name.label('subject'),
+            func.sum(case((Mark.score >= 80, 1), else_=0)).label('EE'),
+            func.sum(case((Mark.score >= 60, 1), else_=0)).label('ME'),
+            func.sum(case((Mark.score >= 40, 1), else_=0)).label('AE'),
+            func.sum(case((Mark.score < 40, 1), else_=0)).label('BE'),
+            func.count(Mark.id).label('total')
+        ).select_from(Mark)\
+         .join(Subject, Mark.subject_id == Subject.id)\
+         .join(Student, Mark.student_id == Student.id)\
+         .filter(
+             Student.school_id == int(school_id),
+             Student.grade == grade,
+             Mark.term == selected_term,
+             Mark.year == int(selected_year) if selected_year else None,
+             Mark.exam == exam
+         ).group_by(Subject.name)
 
-            counts = {'EE': 0, 'ME': 0, 'AE': 0, 'BE': 0}
-            total = 0
-            for m in marks:
-                level = cbc_grade(m.score)
-                if level:
-                    counts[level] += 1
-                    total += 1
-            results.append({
-                'subject': subj.name,
-                'EE': counts['EE'],
-                'ME': counts['ME'],
-                'AE': counts['AE'],
-                'BE': counts['BE'],
-                'total': total
-            })
+        results = level_counts.all()   # assign to results
 
-    # ---- Determine school name for heading ----
+    # ---- Determine school name ----
     school_name = None
     if school_id:
         school = School.query.get(int(school_id))
@@ -634,7 +629,7 @@ def student_term_report(student_id):
     subjects = Subject.query.filter_by(grade=grade).order_by(Subject.name).all()
     subject_names = [s.name for s in subjects]
 
-    # All exams that have at least one mark for this student in the given term/year
+    # ---- All exams for this student in the given term/year ----
     exam_rows = db.session.query(Mark.exam).filter(
         Mark.student_id == student_id,
         Mark.term == term,
@@ -646,68 +641,89 @@ def student_term_report(student_id):
         flash("No marks found for this term/year.", "info")
         return redirect(url_for('reports.reports_student'))
 
-    # All students in the same school + grade (for ranking)
+    # ---- All students in the same school + grade (for ranking) ----
     all_student_ids = [s.id for s in Student.query.filter_by(
         school_id=student.school_id, grade=grade
     ).all()]
 
-    # ===== Per‑Exam Data =====
+    # ---- 1. Get subject scores for the target student (per exam) ----
+    subject_scores_query = db.session.query(
+        Mark.exam,
+        Subject.name.label('subject_name'),
+        Mark.score
+    ).join(Subject, Mark.subject_id == Subject.id)\
+     .filter(
+         Mark.student_id == student_id,
+         Mark.term == term,
+         Mark.year == year,
+         Mark.exam.in_(exams)
+     ).order_by(Mark.exam, Subject.name)
+
+    # Build a dict: exam -> {subject: score}
+    scores_by_exam = {}
+    for row in subject_scores_query.all():
+        exam = row.exam
+        if exam not in scores_by_exam:
+            scores_by_exam[exam] = {}
+        scores_by_exam[exam][row.subject_name] = row.score
+
+    # ---- 2. Get total scores for all students (per exam) for ranking ----
+    # Query: student_id, exam, total_score
+    totals_query = db.session.query(
+        Mark.student_id,
+        Mark.exam,
+        func.sum(Mark.score).label('total_score')
+    ).filter(
+        Mark.student_id.in_(all_student_ids),
+        Mark.term == term,
+        Mark.year == year,
+        Mark.exam.in_(exams)
+    ).group_by(Mark.student_id, Mark.exam).all()
+
+    # Build structure: exam -> list of (student_id, total_score)
+    exam_totals = {exam: [] for exam in exams}
+    for row in totals_query:
+        exam_totals[row.exam].append((row.student_id, row.total_score))
+
+    # ---- Build exam_data ----
     exam_data = []
     for exam in exams:
-        # Student's scores
-        marks_query = Mark.query.filter(
-            Mark.student_id == student_id,
-            Mark.term == term,
-            Mark.year == year,
-            Mark.exam == exam
-        ).join(Subject).order_by(Subject.name)
-        scores = {}
-        total = 0
-        for m in marks_query.all():
-            scores[m.subject.name] = m.score
-            total += m.score
+        # Student's scores for this exam
+        scores = scores_by_exam.get(exam, {})
+        total = sum(scores.values())
 
-        # Class totals & ranking for this exam
-        class_totals = db.session.query(
-            Mark.student_id,
-            func.sum(Mark.score).label('total_score')
-        ).filter(
-            Mark.student_id.in_(all_student_ids),
-            Mark.term == term,
-            Mark.year == year,
-            Mark.exam == exam
-        ).group_by(Mark.student_id).all()
-
-        sorted_totals = sorted(class_totals, key=lambda x: x.total_score, reverse=True)
-        rank = next((i+1 for i, r in enumerate(sorted_totals) if r.student_id == student_id), None)
+        # Rank & class size
+        totals = exam_totals.get(exam, [])
+        # Sort descending by total score
+        totals_sorted = sorted(totals, key=lambda x: x[1], reverse=True)
+        class_size = len(totals_sorted)
+        rank = next((i+1 for i, (sid, _) in enumerate(totals_sorted) if sid == student_id), None)
 
         exam_data.append({
             'exam': exam,
-            'scores': scores,
+            'scores': scores,               # dict: subject -> score
             'total': total,
             'rank': rank,
-            'class_size': len(sorted_totals)
+            'class_size': class_size
         })
 
-    # ===== Overall Rank (by average total) =====
-    overall_totals = []
-    for sid in all_student_ids:
-        totals = []
-        for exam in exams:
-            t = db.session.query(func.sum(Mark.score)).filter(
-                Mark.student_id == sid,
-                Mark.term == term,
-                Mark.year == year,
-                Mark.exam == exam
-            ).scalar()
-            if t is not None:
-                totals.append(t)
-        if totals:
-            overall_totals.append((sid, sum(totals) / len(totals)))
+    # ---- Overall rank (by average total across exams) ----
+    # Compute average total per student across exams
+    overall_totals = {}  # student_id -> average
+    for exam, totals in exam_totals.items():
+        for sid, t in totals:
+            if sid not in overall_totals:
+                overall_totals[sid] = []
+            overall_totals[sid].append(t)
+    # Average
+    overall_avg = {}
+    for sid, totals in overall_totals.items():
+        overall_avg[sid] = sum(totals) / len(totals) if totals else 0
 
-    overall_totals.sort(key=lambda x: x[1], reverse=True)
-    overall_rank = next((i+1 for i, (sid, _) in enumerate(overall_totals) if sid == student_id), None)
-    overall_class_size = len(overall_totals)
+    # Sort by average descending
+    sorted_overall = sorted(overall_avg.items(), key=lambda x: x[1], reverse=True)
+    overall_rank = next((i+1 for i, (sid, _) in enumerate(sorted_overall) if sid == student_id), None)
+    overall_class_size = len(sorted_overall)
 
     avg_total = round(sum(e['total'] for e in exam_data) / len(exam_data), 2) if exam_data else 0
 
@@ -746,41 +762,30 @@ def reports_cbc_excel():
         school_id = current_user.school_id
         grade = current_user.grade
 
-    def apply_filters(query):
-        if selected_term:
-            query = query.filter(Mark.term == selected_term)
-        if selected_year:
-            try:
-                query = query.filter(Mark.year == int(selected_year))
-            except ValueError:
-                pass
-        if exam:
-            query = query.filter(Mark.exam == exam)
-        # query = query.filter(Mark.status == 'Approved')
-        return query
-
     rows = []
     if school_id:
-        subjects = Subject.query.filter_by(grade=grade).order_by(Subject.name).all()
-        for subj in subjects:
-            marks = apply_filters(Mark.query).filter(
-                Mark.subject_id == subj.id
-            ).join(Student).filter(Student.school_id == int(school_id)).all()
-            counts = {'EE': 0, 'ME': 0, 'AE': 0, 'BE': 0}
-            for m in marks:
-                level = cbc_grade(m.score)
-                if level:
-                    counts[level] += 1
-            rows.append({
-                'Subject': subj.name,
-                'EE': counts['EE'],
-                'ME': counts['ME'],
-                'AE': counts['AE'],
-                'BE': counts['BE'],
-                'Total Students': sum(counts.values())
-            })
+        level_counts = db.session.query(
+            Subject.name.label('subject'),
+            func.sum(case((Mark.score >= 80, 1), else_=0)).label('EE'),
+            func.sum(case((Mark.score >= 60, 1), else_=0)).label('ME'),
+            func.sum(case((Mark.score >= 40, 1), else_=0)).label('AE'),
+            func.sum(case((Mark.score < 40, 1), else_=0)).label('BE'),
+            func.count(Mark.id).label('total')
+        ).select_from(Mark)\
+         .join(Subject, Mark.subject_id == Subject.id)\
+         .join(Student, Mark.student_id == Student.id)\
+         .filter(
+             Student.school_id == int(school_id),
+             Student.grade == grade,
+             Mark.term == selected_term,
+             Mark.year == int(selected_year) if selected_year else None,
+             Mark.exam == exam
+         ).group_by(Subject.name)
 
-    df = pd.DataFrame(rows)
+        rows = level_counts.all()   # assign to rows
+
+    # Build DataFrame from rows
+    df = pd.DataFrame(rows) if rows else pd.DataFrame()
 
     # Build Excel with headers
     output = io.BytesIO()
@@ -798,7 +803,8 @@ def reports_cbc_excel():
         sheet.cell(row=2, column=6, value=exam)
         sheet.cell(row=2, column=7, value="Year:")
         sheet.cell(row=2, column=8, value=selected_year if selected_year else "All")
-        df.to_excel(writer, sheet_name="CBC Report", startrow=3, index=False)
+        if not df.empty:
+            df.to_excel(writer, sheet_name="CBC Report", startrow=3, index=False)
     output.seek(0)
     return send_file(output, download_name='cbc_report.xlsx', as_attachment=True,
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')

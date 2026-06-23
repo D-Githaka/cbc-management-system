@@ -5,6 +5,7 @@ from extensions import db
 from models import School, Student, Subject, Mark
 from utils.helpers import cbc_grade
 from sqlalchemy import func
+from datetime import datetime
 
 marks_bp = Blueprint('marks', __name__)
 
@@ -54,6 +55,8 @@ def enter_marks():
     year = request.args.get('year')
     exam = request.args.get('exam', 'Exam 1')
 
+    if not year:
+        year = str(datetime.now().year)
     # -------------------------
     # ROLE-BASED SCHOOL LOGIC
     # -------------------------
@@ -134,7 +137,6 @@ def enter_marks():
     )
 
 #Save Marks
-
 @marks_bp.route('/save_marks', methods=['POST'])
 @login_required
 def save_marks():
@@ -156,9 +158,22 @@ def save_marks():
         if current_user.role == "teacher":
             if current_user.grade != student.grade:
                 return jsonify({"error": "You can only enter marks for your assigned grade"}), 403
-            # Optional: ensure the teacher’s grade matches, but front‑end already enforces
 
-    for subject_id, score in marks.items():
+    # ---- Fetch existing marks for this student, term, year, exam ONCE ----
+    existing_marks = Mark.query.filter_by(
+        student_id=student_id,
+        term=term,
+        year=year,
+        exam=exam
+    ).all()
+    existing_dict = {m.subject_id: m for m in existing_marks}   # key by subject_id
+
+    # Prepare list of new marks to add (for bulk insert)
+    new_marks = []
+
+    for subject_id_str, score in marks.items():
+        subject_id = int(subject_id_str)
+
         # Validate score
         try:
             score = float(score)
@@ -167,38 +182,38 @@ def save_marks():
         if score < 0 or score > 100:
             return jsonify({"error": "Score out of range"}), 400
 
-        # Optional: check subject exists and grade matches student
-        subject = Subject.query.get(int(subject_id))
+        # Validate subject
+        subject = Subject.query.get(subject_id)
         if not subject or subject.grade != student.grade:
             return jsonify({"error": f"Subject #{subject_id} not valid for this student"}), 400
 
         grade_level = cbc_grade(score)
 
-        existing = Mark.query.filter_by(
-            student_id=student.id,
-            subject_id=int(subject_id),
-            term=term,
-            year=year,
-            exam=exam
-        ).first()
-
-        if existing:
-            if existing.status == 'Approved':
-                return jsonify({"error": "Cannot edit approved marks."}), 403
-            existing.score = score
-            existing.cbc_level = grade_level
+        if subject_id in existing_dict:
+            # Update existing mark
+            mark = existing_dict[subject_id]
+            mark.score = score
+            mark.cbc_level = grade_level
+            mark.status = 'Pending'          # reset approval status on edit
+            # Optionally update submitted_by to current user
+            mark.submitted_by = current_user.id
         else:
-            db.session.add(Mark(
+            # New mark
+            new_marks.append(Mark(
                 student_id=student.id,
-                subject_id=int(subject_id),
+                subject_id=subject_id,
                 score=score,
                 term=term,
                 year=year,
                 exam=exam,
                 cbc_level=grade_level,
-                status='Pending',          # <-- NEW
-                submitted_by=current_user.id 
+                status='Pending',
+                submitted_by=current_user.id
             ))
+
+    # Bulk insert new marks
+    if new_marks:
+        db.session.bulk_save_objects(new_marks)
 
     try:
         db.session.commit()

@@ -3,6 +3,7 @@ from flask_login import login_required, current_user
 from extensions import db
 from models import Mark, Student, School, Subject, User
 from sqlalchemy import func
+from sqlalchemy.orm import aliased
 from datetime import datetime
 
 approvals_bp = Blueprint('approvals', __name__)
@@ -15,9 +16,13 @@ def approvals_dashboard():
 
     school_id = current_user.school_id if current_user.role == 'principal' else request.args.get('school_id')
 
+    Approver = aliased(User)
+
     submissions = db.session.query(
         Mark.submitted_by,
         User.username.label('teacher_name'),
+        User.school_id.label('teacher_school_id'),
+        User.grade.label('teacher_grade'), 
         Student.grade,
         Mark.term,
         Mark.year,
@@ -27,31 +32,34 @@ def approvals_dashboard():
         func.sum(db.case((Mark.status == 'Approved', 1), else_=0)).label('approved_count'),
         func.min(Mark.created_at).label('submitted_at'),
         func.max(Mark.approved_at).label('last_approved_at'),
-        func.max(Mark.approved_by).label('approved_by_id')
+        func.max(Mark.approved_by).label('approved_by_id'),
+        Approver.username.label('approved_by_name')   # now defined
     ).join(Student, Mark.student_id == Student.id)\
      .join(School, Student.school_id == School.id)\
      .join(User, Mark.submitted_by == User.id)\
-     .filter(Mark.submitted_by != None)
+     .outerjoin(Approver, Mark.approved_by == Approver.id)\
+     .filter(Mark.submitted_by.isnot(None))   # backslash before this line ensures continuation
 
     if school_id:
         submissions = submissions.filter(Student.school_id == int(school_id))
 
     submissions = submissions.group_by(
-        Mark.submitted_by, Student.grade, Mark.term, Mark.year, Mark.exam
+        Mark.submitted_by,
+        Student.grade,
+        Mark.term,
+        Mark.year,
+        Mark.exam,
+        School.name                 # added for SQL compliance
     ).order_by(func.min(Mark.created_at).desc()).all()
 
-    # Resolve approver names
-    approver_ids = {s.approved_by_id for s in submissions if s.approved_by_id}
-    approver_map = {}
-    if approver_ids:
-        approvers = User.query.filter(User.id.in_(approver_ids)).all()
-        approver_map = {a.id: a.username for a in approvers}
-
+    # No separate approver query needed – we already have approved_by_name
     submissions_with_approver = []
     for s in submissions:
         submissions_with_approver.append({
             'submitted_by': s.submitted_by,
             'teacher_name': s.teacher_name,
+            'teacher_school_id': s.teacher_school_id,
+            'teacher_grade': s.teacher_grade,
             'grade': s.grade,
             'term': s.term,
             'year': s.year,
@@ -61,7 +69,7 @@ def approvals_dashboard():
             'approved_count': s.approved_count,
             'submitted_at': s.submitted_at,
             'approved_at': s.last_approved_at,
-            'approved_by_name': approver_map.get(s.approved_by_id, '-')
+            'approved_by_name': s.approved_by_name or '-'
         })
 
     schools = School.query.all() if current_user.role == 'admin' else []
@@ -134,25 +142,22 @@ def approve_submission():
         return jsonify({"status": "error", "message": "Missing parameters"}), 400
 
     try:
-        teacher = User.query.get(teacher_id)
-        if not teacher or not teacher.school_id:
-            return jsonify({"status": "error", "message": "Invalid teacher"}), 400
-
-        student_ids = [s.id for s in Student.query.filter_by(
-            grade=grade, school_id=teacher.school_id
-        ).all()]
-
-        if not student_ids:
-            return jsonify({"status": "success", "count": 0})
-
-        updated = Mark.query.filter(
+        # Build subquery for pending marks that match the criteria
+        subquery = db.session.query(Mark.id).join(Student).filter(
             Mark.submitted_by == teacher_id,
-            Mark.student_id.in_(student_ids),
             Mark.term == term,
             Mark.year == int(year),
             Mark.exam == exam,
-            Mark.status == 'Pending'
-        ).update({
+            Mark.status == 'Pending',
+            Student.grade == grade
+        )
+
+        # Principal can only approve marks from their own school
+        if current_user.role == 'principal':
+            subquery = subquery.filter(Student.school_id == current_user.school_id)
+
+        # Update using a subquery to avoid the join in the update statement
+        updated = Mark.query.filter(Mark.id.in_(subquery.subquery())).update({
             'status': 'Approved',
             'approved_by': current_user.id,
             'approved_at': datetime.utcnow()
@@ -160,6 +165,53 @@ def approve_submission():
 
         db.session.commit()
         return jsonify({'status': 'success', 'count': updated})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@approvals_bp.route('/approvals/delete', methods=['POST'])
+@login_required
+def delete_submission():
+    if current_user.role not in ['admin', 'principal', 'teacher']:
+        abort(403)
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"status": "error", "message": "Invalid JSON"}), 400
+
+    teacher_id = data.get('teacher_id')
+    grade = data.get('grade')
+    term = data.get('term')
+    year = data.get('year')
+    exam = data.get('exam')
+
+    if not all([teacher_id, grade, term, year, exam]):
+        return jsonify({"status": "error", "message": "Missing parameters"}), 400
+
+    try:
+        # Permission checks
+        if current_user.role == 'teacher' and current_user.id != teacher_id:
+            return jsonify({"status": "error", "message": "You can only delete your own submissions."}), 403
+
+        # Build subquery for marks to delete
+        subquery = db.session.query(Mark.id).join(Student).filter(
+            Mark.submitted_by == teacher_id,
+            Mark.term == term,
+            Mark.year == int(year),
+            Mark.exam == exam,
+            Student.grade == grade
+        )
+
+        # Principal can only delete marks from their own school
+        if current_user.role == 'principal':
+            subquery = subquery.filter(Student.school_id == current_user.school_id)
+        # Admin: no restriction
+
+        # Delete using subquery
+        deleted = Mark.query.filter(Mark.id.in_(subquery.subquery())).delete(synchronize_session='fetch')
+
+        db.session.commit()
+        return jsonify({'status': 'success', 'count': deleted})
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
