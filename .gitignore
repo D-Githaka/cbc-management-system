@@ -17,6 +17,7 @@ build/
 instance/
 *.sqlite3
 *.db
+*.db.bak
 *.sqlite
 
 # Environment
