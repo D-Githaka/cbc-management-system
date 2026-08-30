@@ -1,0 +1,65 @@
+{% extends "timetable_base.html" %}
+
+{% block title %}Generate Timetable{% endblock %}
+
+{% block content %}
+<h2>⚙️ Generate Timetable</h2>
+<p class="text-muted">Configure the solver parameters and generate the timetable.</p>
+
+<form method="POST">
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card mb-3">
+                <div class="card-header bg-primary text-white">
+                    <strong>Solver Parameters</strong>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">Periods per Day</label>
+                        <input type="number" class="form-control" name="periods" value="8" min="1" max="12">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">CPU Cores</label>
+                        <input type="number" class="form-control" name="workers" value="8" min="1" max="16">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card mb-3">
+                <div class="card-header bg-info text-white">
+                    <strong>Constraint Settings</strong>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">Core Subjects (comma-separated)</label>
+                        <input type="text" class="form-control" name="core_subjects" 
+                               value="Mathematics,English,Kiswahili,Integrated Science">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Morning Slots (comma-separated)</label>
+                        <input type="text" class="form-control" name="morning_slots" 
+                               value="1,2,3,4">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-success btn-lg">🚀 Generate Timetable</button>
+</form>
+
+<div class="mt-4">
+    <div class="alert alert-info">
+        <strong>What happens next:</strong>
+        <ul>
+            <li>The solver will use the subjects, hours, streams, and allocations from the database.</li>
+            <li>Users with powerful machines can increase CPU Cores to get results faster.</li>
+            <li>It will generate a timetable that respects all constraints.</li>
+            <li>The result will be downloaded as an Excel file.</li>
+            <li>Generated timetables are also saved in the database for later viewing.</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}

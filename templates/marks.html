@@ -5,145 +5,245 @@
 
 <div class="card p-4 shadow-sm">
 
-  <form action="{{ url_for('marks.enter_marks') }}" method="GET">
+<form action="{{ url_for('marks.enter_marks') }}" method="GET">
     <div class="row g-3">
 
-      {% if current_user.role == "admin" %}
-      <div class="col-md-3">
-        <label class="form-label">School</label>
-        <select name="school_id" class="form-select" required>
-          {% for s in schools %}
-            <option value="{{ s.id }}">{{ s.name }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      {% endif %}
+        {% if current_user.role == "admin" %}
+        <div class="col-md-3">
+            <label class="form-label">School</label>
+            <select name="school_id" class="form-select" required>
+                {% for s in schools %}
+                    <option value="{{ s.id }}" {% if s.id == selected_school_id %}selected{% endif %}>
+                        {{ s.name }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
 
-      <div class="col-md-3">
-        <label class="form-label">Grade</label>
-        <select name="grade" class="form-select" required>
-          <option value="">Select Grade</option>
-          {% for g in ["PP1","PP2","Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9"] %}
-            <option value="{{ g }}">{{ g }}</option>
-          {% endfor %}
-        </select>
-      </div>
+        {# For teachers: hidden school_id #}
+        {% if is_teacher %}
+            <input type="hidden" name="school_id" value="{{ teacher_school.id }}">
+        {% endif %}
 
-      <div class="col-md-3">
-        <label class="form-label">Term</label>
-        <select name="term" class="form-select" required>
-          <option value="">Select Term</option>
-          <option>Term 1</option>
-          <option>Term 2</option>
-          <option>Term 3</option>
-        </select>
-      </div>
+        <div class="col-md-3">
+            <label class="form-label">Grade</label>
+            {% if is_teacher %}
+                <input type="text" class="form-control" value="{{ teacher_grade }}" readonly>
+                <input type="hidden" name="grade" value="{{ teacher_grade }}">
+            {% else %}
+                <select name="grade" class="form-select" required>
+                    <option value="">Select Grade</option>
+                    {% for g in ["PP1","PP2","Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9"] %}
+                        <option value="{{ g }}" {% if g == selected_grade %}selected{% endif %}>{{ g }}</option>
+                    {% endfor %}
+                </select>
+            {% endif %}
+        </div>
 
-      <div class="col-md-3">
-        <label class="form-label">Exam</label>
-        <select name="exam" class="form-select" required>
-          <option value="Exam 1">Exam 1</option>
-          <option value="Exam 2">Exam 2</option>
-          <option value="Exam 3">Exam 3</option>
-        </select>
-      </div>
+        <div class="col-md-3">
+            <label class="form-label">Term</label>
+            <select name="term" class="form-select" required>
+                <option value="">Select Term</option>
+                {% for t in ["Term 1","Term 2","Term 3"] %}
+                    <option value="{{ t }}" {% if t == selected_term %}selected{% endif %}>{{ t }}</option>
+                {% endfor %}
+            </select>
+        </div>
 
-      <div class="col-md-3">
-        <label class="form-label">Year</label>
-        <select name="year" class="form-select" required>
-          <option value="">Year</option>
-          {% for y in range(2021, 2031) %}
-            <option value="{{ y }}">{{ y }}</option>
-          {% endfor %}
-        </select>
-      </div>
+        <div class="col-md-3">
+            <label class="form-label">Exam</label>
+            <select name="exam" class="form-select" required>
+                <option value="Exam 1" {% if selected_exam == 'Exam 1' %}selected{% endif %}>Exam 1</option>
+                <option value="Exam 2" {% if selected_exam == 'Exam 2' %}selected{% endif %}>Exam 2</option>
+                <option value="Exam 3" {% if selected_exam == 'Exam 3' %}selected{% endif %}>Exam 3</option>
+            </select>
+        </div>
+
+        <div class="col-md-3">
+            <label class="form-label">Year</label>
+            <select name="year" class="form-select" required>
+                <option value="">Year</option>
+                {% for y in range(2021, 2031) %}
+                    <option value="{{ y }}" {% if y|string == selected_year|string %}selected{% endif %}>{{ y }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
     </div>
 
-  <div class="d-flex gap-2 mt-3">
-      <button class="btn btn-dark">Proceed to Enter Marks</button>
-      <a id="addStudentLink" href="#" class="btn btn-success d-none">➕ Add Student</a>
-      <a href="{{ url_for('main.upload_csv') }}" class="btn btn-outline-secondary">
-          📤 Upload CSV
-      </a>
-  </div>
-
-  {% if current_user.role == 'admin' %}
-  <div class="mt-3">
-    <a href="{{ url_for('approvals.approvals_dashboard') }}" class="btn btn-warning">
-      <i class="bi bi-check-circle me-1"></i> Approvals Dashboard
+<div class="d-flex gap-2 mt-3">
+    <button class="btn btn-dark">Proceed to Enter Marks</button>
+    <a id="addStudentLink" href="#" class="btn btn-success d-none">➕ Add Student</a>
+    <a id="classReportLink" href="#" class="btn btn-info d-none">📊 Class Report</a>
+    <a id="cbcReportLink" href="#" class="btn btn-warning d-none">📊 EE-BE Report</a>
+    <a href="{{ url_for('main.upload_csv') }}" class="btn btn-outline-secondary">
+        📤 Upload CSV
     </a>
-  </div>
-  {% endif %}
+</div>
 
-  <!-- Modal for post-add student actions -->
-  <div class="modal fade" id="postAddModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title">Student Added</h5>
-        </div>
-        <div class="modal-body">
-          What would you like to do next?
-        </div>
-        <div class="modal-footer">
-          <a id="addAnotherBtn" class="btn btn-success">➕ Add Another Student</a>
-          <a id="proceedBtn" class="btn btn-dark">Proceed to Enter Marks</a>
-        </div>
-      </div>
+    {% if current_user.role == 'admin' %}
+    <div class="mt-3">
+      <a href="{{ url_for('approvals.approvals_dashboard') }}" class="btn btn-warning">
+        <i class="bi bi-check-circle me-1"></i> Approvals Dashboard
+      </a>
     </div>
-  </div>
+    {% endif %}
+  </form>
+
+{% if is_teacher and submissions %}
+<hr>
+<h5>Your Submissions</h5>
+
+<!-- Pending Submissions -->
+<div class="card mb-2">
+    <div class="card-header" data-bs-toggle="collapse" data-bs-target="#pendingSubmissions" aria-expanded="false" style="cursor:pointer;">
+        <strong>Pending Submissions</strong>
+        <span class="badge bg-warning">{{ submissions | selectattr('status', 'equalto', 'Pending') | list | length }}</span>
+    </div>
+    <div id="pendingSubmissions" class="collapse">
+        <div class="card-body">
+            <table class="table table-sm table-hover">
+                <thead>
+                    <tr>
+                        <th>Grade</th>
+                        <th>Term</th>
+                        <th>Year</th>
+                        <th>Exam</th>
+                        <th>Total</th>
+                        <th>Approved</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sub in submissions if sub.status == 'Pending' %}
+                    <tr>
+                        <td>{{ sub.grade }}</td>
+                        <td>{{ sub.term }}</td>
+                        <td>{{ sub.year }}</td>
+                        <td>{{ sub.exam }}</td>
+                        <td>{{ sub.total }}</td>
+                        <td>{{ sub.approved }}</td>
+                        <td>
+                            <button class="btn btn-sm btn-danger delete-btn"
+                                    data-teacher="{{ current_user.id }}"
+                                    data-grade="{{ sub.grade }}"
+                                    data-term="{{ sub.term }}"
+                                    data-year="{{ sub.year }}"
+                                    data-exam="{{ sub.exam }}">Delete</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Approved Submissions -->
+<div class="card">
+    <div class="card-header" data-bs-toggle="collapse" data-bs-target="#approvedSubmissions" aria-expanded="false" style="cursor:pointer;">
+        <strong>Approved Submissions</strong>
+        <span class="badge bg-success">{{ submissions | selectattr('status', 'equalto', 'Approved') | list | length }}</span>
+    </div>
+    <div id="approvedSubmissions" class="collapse">
+        <div class="card-body">
+            <table class="table table-sm table-hover">
+                <thead>
+                    <tr>
+                        <th>Grade</th>
+                        <th>Term</th>
+                        <th>Year</th>
+                        <th>Exam</th>
+                        <th>Total</th>
+                        <th>Approved</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sub in submissions if sub.status == 'Approved' %}
+                    <tr>
+                        <td>{{ sub.grade }}</td>
+                        <td>{{ sub.term }}</td>
+                        <td>{{ sub.year }}</td>
+                        <td>{{ sub.exam }}</td>
+                        <td>{{ sub.total }}</td>
+                        <td>{{ sub.approved }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 </div>
 
 <script>
-  // Pre-built URLs from the server (avoids JS guessing)
-  const addStudentUrl = "{{ url_for('main.add_student') }}";
-  const enterMarksUrl = "{{ url_for('marks.enter_marks') }}";
+const addStudentUrl = "{{ url_for('main.add_student') }}";
+const classReportUrl = "{{ url_for('reports.reports_school') }}";
+const cbcReportUrl = "{{ url_for('reports.reports_cbc') }}";
 
-  // DOM elements
-  const gradeEl   = document.querySelector('select[name="grade"]');
-  const termEl    = document.querySelector('select[name="term"]');
-  const yearEl    = document.querySelector('select[name="year"]');
-  const schoolEl  = document.querySelector('select[name="school_id"]');
-  const addStudentLink = document.getElementById("addStudentLink");
+// DOM elements
+const gradeEl   = document.querySelector('select[name="grade"]');
+const termEl    = document.querySelector('select[name="term"]');
+const yearEl    = document.querySelector('select[name="year"]');
+const examEl    = document.querySelector('select[name="exam"]');
+const schoolEl  = document.querySelector('select[name="school_id"]');
+const addStudentLink = document.getElementById("addStudentLink");
+const classReportLink = document.getElementById("classReportLink");
+const cbcReportLink = document.getElementById("cbcReportLink");
 
-  function updateAddStudentLink() {
-    const grade = gradeEl?.value || "";
-    const term  = termEl?.value  || "";
-    const year  = yearEl?.value  || "";
+function updateLinks() {
+    const grade = document.querySelector('input[name="grade"]')?.value || document.querySelector('select[name="grade"]')?.value || "";
+    const term  = document.querySelector('select[name="term"]')?.value || "";
+    const year  = document.querySelector('select[name="year"]')?.value || "";
+    const exam  = document.querySelector('select[name="exam"]')?.value || "";
+    const schoolInput = document.querySelector('input[name="school_id"]');
+    const schoolSelect = document.querySelector('select[name="school_id"]');
+    const schoolId = schoolInput ? schoolInput.value : (schoolSelect ? schoolSelect.value : "");
 
-    if (grade && term && year) {
-      const params = new URLSearchParams({ grade, term, year });
-      if (schoolEl) params.set("school_id", schoolEl.value);
-      addStudentLink.href = `${addStudentUrl}?${params}`;
-      addStudentLink.classList.remove("d-none");
+    if (grade && term && year && schoolId) {
+        const params = new URLSearchParams({ grade, term, year, exam, school_id: schoolId });
+        addStudentLink.href = `${addStudentUrl}?${params}`;
+        addStudentLink.classList.remove("d-none");
+        classReportLink.href = `${classReportUrl}?${params}`;
+        classReportLink.classList.remove("d-none");
+        cbcReportLink.href = `${cbcReportUrl}?${params}`;
+        cbcReportLink.classList.remove("d-none");
     } else {
-      addStudentLink.classList.add("d-none");
+        addStudentLink.classList.add("d-none");
+        classReportLink.classList.add("d-none");
+        cbcReportLink.classList.add("d-none");
     }
-  }
-
-  // Attach change listeners
-  [gradeEl, termEl, yearEl, schoolEl].forEach(el => {
-    if (el) el.addEventListener("change", updateAddStudentLink);
-  });
-  updateAddStudentLink(); // initial state
-
-  // Handle "added" query parameter (from redirect after adding student)
-  const urlParams = new URLSearchParams(window.location.search);
-  if (urlParams.get("added") === "1") {
-    const query = new URLSearchParams({
-      grade: urlParams.get("grade") || "",
-      term: urlParams.get("term") || "",
-      year: urlParams.get("year") || "",
-      school_id: urlParams.get("school_id") || ""
-    }).toString();
-
-    document.getElementById("addAnotherBtn").href = `${addStudentUrl}?${query}`;
-    document.getElementById("proceedBtn").href = `${enterMarksUrl}?${query}`;
-
-    const modal = new bootstrap.Modal(document.getElementById("postAddModal"));
-    modal.show();
-    history.replaceState(null, "", window.location.pathname);
-  }
+}
+// Delete submission (teacher only)
+document.querySelectorAll('.delete-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        if (!confirm('Delete this submission? This will permanently remove all marks. Are you sure?')) return;
+        const res = await fetch('/approvals/delete', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                teacher_id: btn.dataset.teacher,
+                grade: btn.dataset.grade,
+                term: btn.dataset.term,
+                year: btn.dataset.year,
+                exam: btn.dataset.exam
+            })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    });
+});
+// Attach change listeners
+[gradeEl, termEl, yearEl, examEl, schoolEl].forEach(el => {
+    if (el) el.addEventListener("change", updateLinks);
+});
+updateLinks(); // initial state
 </script>
 {% endblock %}

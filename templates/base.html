@@ -53,7 +53,7 @@
     .table-responsive {
         overflow-x: scroll !important;
     }
-    
+
     .sidebar {
         width: 240px;
         background: #212529;
@@ -142,6 +142,11 @@
             text-align: center;
         }
     }
+    @media (max-width: 768px) {
+        .ag-theme-alpine {
+            font-size: 11px;
+  }
+}
     </style>
 </head>
 
@@ -178,7 +183,7 @@
     </nav>
 
     <div class="layout">
-    <div id="sidebar" class="sidebar">    
+    <div id="sidebar" class="sidebar">
         <h4>CBC System</h4>
         <hr>
         {% set current = request.path %}
@@ -199,35 +204,35 @@
             <i class="bi bi-building"></i> Schools
         </a>
 
-        <a class="d-flex align-items-center text-white text-decoration-none" data-bs-toggle="collapse" 
+        <a class="d-flex align-items-center text-white text-decoration-none" data-bs-toggle="collapse"
            href="#reportsMenu" role="button" aria-expanded="false" aria-controls="reportsMenu"
            style="padding: 10px; border-radius: 6px;">
             <i class="bi bi-bar-chart me-2"></i> Reports
         </a>
         <div class="collapse" id="reportsMenu">
-            <a href="{{ url_for('reports.reports_school') }}" 
-               class="d-block text-white-50 py-1 ps-4 {{ 'active' if request.path == url_for('reports.reports_school') }}">Top Schools</a>
-            <a href="{{ url_for('reports.reports_student') }}" 
-               class="d-block text-white-50 py-1 ps-4 {{ 'active' if request.path == url_for('reports.reports_student') }}">Top Students</a>
-            <a href="{{ url_for('reports.reports_cbc') }}" 
-               class="d-block text-white-50 py-1 ps-4 {{ 'active' if request.path == url_for('reports.reports_cbc') }}">CBC Grade Reports</a>
+            <a href="{{ url_for('reports.reports_school') }}"
+               class="d-block text-white-50 py-1 ps-4 {{ 'active' if request.path == url_for('reports.reports_school') }}">Schools Reports</a>
+            <a href="{{ url_for('reports.reports_student') }}"
+               class="d-block text-white-50 py-1 ps-4 {{ 'active' if request.path == url_for('reports.reports_student') }}">Top Students Regional</a>
+            <a href="{{ url_for('reports.reports_cbc') }}"
+               class="d-block text-white-50 py-1 ps-4 {{ 'active' if request.path == url_for('reports.reports_cbc') }}">EE-BE Reports</a>
         </div>
 
         {% if current_user.role in ['admin', 'principal'] %}
-        <a href="{{ url_for('approvals.approvals_dashboard') }}" 
+        <a href="{{ url_for('approvals.approvals_dashboard') }}"
            class="{{ 'active' if request.path.startswith('/approvals') }}">
             <i class="bi bi-check-circle"></i> Marks Approval
         </a>
         {% endif %}
 
-        {% if current_user.role in ['admin', 'principal'] %}
+
         <a href="{{ url_for('manage_users') }}" class="{{ 'active' if current == url_for('manage_users') }}">
             <i class="bi bi-person-gear"></i> Manage Users
         </a>
-        {% endif %}
 
-        {% if current_user.role in ['principal', 'admin'] %}
-        <a href="{{ url_for('main.timetable_page') }}" class="{{ 'active' if request.path == url_for('main.timetable_page') }}">
+
+{% if current_user.role in ['principal', 'admin'] %}
+        <a href="/timetable" class="{{ 'active' if request.path.startswith('/timetable') }}">
             <i class="bi bi-calendar3"></i> Timetable Generator
         </a>
         {% endif %}
@@ -276,7 +281,7 @@
       });
     });
     </script>
-    
+
 
 </body>
 </html>

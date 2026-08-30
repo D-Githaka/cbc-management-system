@@ -1,0 +1,58 @@
+{% extends "timetable_base.html" %}
+{% block title %}Configure Subject Hours{% endblock %}
+
+{% block content %}
+<h2>⏰ Configure Weekly Lesson Hours</h2>
+<p class="text-muted">Set the number of weekly lessons for each subject.</p>
+
+<form method="POST">
+    <div class="table-responsive">
+        <table class="table table-bordered table-hover">
+            <thead class="table-dark">
+                <tr>
+                    <th>Subject</th>
+                    <th>Middle School (Grades 4-6)</th>
+                    <th>Junior School (Grades 7-9)</th>
+                    <th>Total (M+J)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for subject in subjects %}
+                <tr>
+                    <td><strong>{{ subject.name }}</strong></td>
+                    <td>
+                        <input type="number" class="form-control" 
+                               name="middle_{{ subject.id }}" 
+                               value="{{ subject.middle_hours }}" 
+                               min="0" max="10">
+                    </td>
+                    <td>
+                        <input type="number" class="form-control" 
+                               name="junior_{{ subject.id }}" 
+                               value="{{ subject.junior_hours }}" 
+                               min="0" max="10">
+                    </td>
+                    <td class="fw-bold text-center">{{ subject.total }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot class="table-secondary fw-bold">
+                <tr>
+                    <td><strong>Total Hours per Level</strong></td>
+                    <td class="text-center">{{ total_middle }}</td>
+                    <td class="text-center">{{ total_junior }}</td>
+                    <td class="text-center">{{ total_middle + total_junior }}</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+    <button type="submit" class="btn btn-primary">Save Hours</button>
+</form>
+
+<div class="mt-3">
+    <div class="alert alert-info">
+        <strong>Note:</strong> Total weekly hours per grade should not exceed 
+        {{ 5 * 8 }} slots (5 days × 8 periods).
+    </div>
+</div>
+{% endblock %}

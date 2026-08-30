@@ -40,3 +40,6 @@ cache/
 *.xlsx
 generated_passwords.rtf
 secret_key.txt
+cache/
+cache/
+*.sqbpro

@@ -1,0 +1,53 @@
+{% extends "timetable_base.html" %}
+{% block title %}Saved Timetables{% endblock %}
+
+{% block content %}
+<h2>📂 Saved Timetables</h2>
+
+{% if timetables %}
+<div class="table-responsive">
+    <table class="table table-bordered table-hover">
+        <thead class="table-dark">
+            <tr>
+                <th>ID</th>
+                <th>Generated At</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for tt in timetables %}
+            <tr>
+                <td>{{ tt.id }}</td>
+                <td>{{ tt.generated_at }}</td>
+                <td>
+                    <button class="btn btn-sm btn-info" onclick="viewTimetable({{ tt.id }})">
+                        View
+                    </button>
+                    <button class="btn btn-sm btn-success" onclick="downloadTimetable({{ tt.id }})">
+                        Download
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p class="text-muted">No timetables have been generated yet.</p>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function viewTimetable(id) {
+    // Implement view functionality
+    alert('View timetable ' + id + ' (implement as needed)');
+}
+
+function downloadTimetable(id) {
+    // Implement download functionality
+    alert('Download timetable ' + id + ' (implement as needed)');
+}
+</script>
+{% endblock %}

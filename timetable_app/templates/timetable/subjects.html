@@ -1,0 +1,44 @@
+{% extends "timetable_base.html" %}
+
+{% block title %}Select Subjects from KICD{% endblock %}
+
+{% block content %}
+<h2>📚 Select Subjects from KICD Curriculum Designs</h2>
+<p class="text-muted">
+    Based on the <a href="https://kicd.ac.ke/cbc-materials/curriculum-designs/" target="_blank">
+    KICD Competency-Based Curriculum (CBC) Designs</a> for Grades 4–9.
+</p>
+
+<form method="POST">
+    <div class="row">
+        {% for subject in all_subjects %}
+            <div class="col-md-4 mb-2">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" 
+                           name="selected_subjects" value="{{ subject.name }}"
+                           id="subj_{{ loop.index }}"
+                           {% if subject.name in current_subjects %}checked{% endif %}>
+                    <label class="form-check-label" for="subj_{{ loop.index }}">
+                        {{ subject.name }}
+                        <span class="badge bg-secondary">M: {{ subject.middle_hours }}h</span>
+                        <span class="badge bg-info">J: {{ subject.junior_hours }}h</span>
+                    </label>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+    <button type="submit" class="btn btn-primary mt-3">Save Selected Subjects</button>
+</form>
+
+<div class="mt-4">
+    <h5>About KICD Curriculum Designs</h5>
+    <p>
+        The Kenya Institute of Curriculum Development (KICD) provides curriculum designs 
+        for all subjects under the Competency-Based Curriculum (CBC). These designs outline 
+        the learning outcomes, strands, and sub-strands for each subject at every grade level.
+        <a href="https://kicd.ac.ke/cbc-materials/curriculum-designs/" target="_blank">
+            View all curriculum designs on the KICD website →
+        </a>
+    </p>
+</div>
+{% endblock %}

@@ -10,7 +10,9 @@
             <select name="school_id" class="form-select" onchange="this.form.submit()">
                 <option value="">Select School</option>
                 {% for s in schools %}
-                    <option value="{{ s.id }}" {% if request.args.get('school_id')|int == s.id %}selected{% endif %}>{{ s.name }}</option>
+                    <option value="{{ s.id }}" {% if s.id|string == selected_school_id|string %}selected{% endif %}>
+                        {{ s.name }}
+                    </option>
                 {% endfor %}
             </select>
         </div>

@@ -1,10 +1,12 @@
 {% extends 'base.html' %}
 {% block content %}
-<h2>Student Term Report</h2>
-<p><strong>Student:</strong> {{ student.name }} ({{ student.gender }})</p>
-<p><strong>School:</strong> {{ school.name }} &nbsp; <strong>Grade:</strong> {{ grade }}</p>
-<p><strong>Term:</strong> {{ term }} &nbsp; <strong>Year:</strong> {{ year }}</p>
 
+<div class="report-header">
+    <h1>{{ school.name }}</h1>
+    <h2>Student Term Report</h2>
+    <p><strong>Student:</strong> {{ student.name }} ({{ student.gender }})</p>
+    <p><strong>Grade:</strong> {{ grade }} &nbsp; <strong>Term:</strong> {{ term }} &nbsp; <strong>Year:</strong> {{ year }}</p>
+</div>
 <div class="table-responsive">
     <table class="table table-bordered table-sm">
         <thead>
@@ -58,6 +60,6 @@
 <p><strong>Overall Class Rank (by average total):</strong> {{ overall_rank }} / {{ overall_class_size }}</p>
 {% endif %}
 
-<button onclick="window.print()" class="btn btn-primary">🖨 Print Report</button>
+<button onclick="window.print()" class="btn btn-primary">Download PDF</button>
 <a href="{{ url_for('reports.reports_student', school_id=school.id, grade=grade, term=term, year=year) }}" class="btn btn-secondary">← Back to Reports</a>
 {% endblock %}

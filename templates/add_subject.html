@@ -3,14 +3,10 @@
 {% block content %}
 <h2>Add Subject</h2>
 
+<!-- Back link with preserved grade -->
+<a href="{{ url_for('main.subjects', grade=request.args.get('grade')) }}" class="text-decoration-none mb-3 d-inline-block">← Back to Subjects</a>
+
 <form method="POST" class="card p-4 shadow-sm">
-    <div class="mb-3">
-        <label>School Type</label>
-        <select name="type" class="form-select" required>
-            <option value="Public">Public</option>
-            <option value="Private">Private</option>
-        </select>
-    </div>
     <div class="mb-3">
         <label>Subject Name</label>
         <input type="text" name="name" class="form-control" required>
@@ -19,12 +15,21 @@
     <div class="mb-3">
         <label>Grade</label>
         <select name="grade" class="form-select">
-            {% for g in ["PP1","PP2","Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9"] %}
-                <option value="{{ g }}">{{ g }}</option>
-            {% endfor %}
+            {% set selected_grade = request.args.get('grade', 'Grade 1') %}
+            <option value="PP1" {% if selected_grade == 'PP1' %}selected{% endif %}>PP1</option>
+            <option value="PP2" {% if selected_grade == 'PP2' %}selected{% endif %}>PP2</option>
+            <option value="Grade 1" {% if selected_grade == 'Grade 1' %}selected{% endif %}>Grade 1</option>
+            <option value="Grade 2" {% if selected_grade == 'Grade 2' %}selected{% endif %}>Grade 2</option>
+            <option value="Grade 3" {% if selected_grade == 'Grade 3' %}selected{% endif %}>Grade 3</option>
+            <option value="Grade 4" {% if selected_grade == 'Grade 4' %}selected{% endif %}>Grade 4</option>
+            <option value="Grade 5" {% if selected_grade == 'Grade 5' %}selected{% endif %}>Grade 5</option>
+            <option value="Grade 6" {% if selected_grade == 'Grade 6' %}selected{% endif %}>Grade 6</option>
+            <option value="Grade 7" {% if selected_grade == 'Grade 7' %}selected{% endif %}>Grade 7</option>
+            <option value="Grade 8" {% if selected_grade == 'Grade 8' %}selected{% endif %}>Grade 8</option>
+            <option value="Grade 9" {% if selected_grade == 'Grade 9' %}selected{% endif %}>Grade 9</option>
         </select>
     </div>
 
-    <button class="btn btn-primary">Save</button>
+    <button class="btn btn-success">Add Subject</button>
 </form>
 {% endblock %}

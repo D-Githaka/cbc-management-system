@@ -1,0 +1,100 @@
+{% extends "timetable_base.html" %}
+
+{% block title %}Dashboard - Timetable Generator{% endblock %}
+
+{% block content %}
+<h2>📊 Dashboard</h2>
+<p class="text-muted">Overview of your current timetable configuration.</p>
+
+<div class="row mt-4">
+    <div class="col-md-3 mb-3">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <h5 class="card-title">Subjects</h5>
+                <p class="card-text display-6">{{ subjects|length }}</p>
+                <a href="{{ url_for('timetable.manage_subjects') }}" class="btn btn-light btn-sm">Manage</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <h5 class="card-title">Grades</h5>
+                <p class="card-text display-6">{{ grades|length }}</p>
+                <span class="btn btn-light btn-sm"">Streams configured</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card text-white bg-warning">
+            <div class="card-body">
+                <h5 class="card-title">Teachers</h5>
+                <p class="card-text display-6">{{ teachers|length }}</p>
+                <a href="{{ url_for('timetable.manage_teachers') }}" class="btn btn-light btn-sm">Manage</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card text-white bg-info">
+            <div class="card-body">
+                <h5 class="card-title">Allocations</h5>
+                <p class="card-text display-6">{{ allocations|length }}</p>
+                <a href="{{ url_for('timetable.manage_allocations') }}" class="btn btn-light btn-sm">Manage</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <h4>Current Streams</h4>
+        <ul class="list-group">
+            {% for grade in grades %}
+                {% set grade_streams = streams|selectattr('grade_level', 'equalto', grade.level)|list %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    Grade {{ grade.level }}
+                    <span class="badge bg-primary rounded-pill">
+                        {{ grade_streams|length }} stream{% if grade_streams|length != 1 %}s{% endif %}
+                        ({{ grade_streams|map(attribute='stream_name')|join(', ') }})
+                    </span>
+                </li>
+            {% endfor %}
+        </ul>
+        <a href="{{ url_for('timetable.manage_streams') }}" class="btn btn-outline-primary btn-sm mt-2">Manage Streams</a>
+    </div>
+    <div class="col-md-6">
+        <h4>Subjects Overview</h4>
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered">
+                <thead>
+                    <tr>
+                        <th>Subject</th>
+                        <th>Middle (h)</th>
+                        <th>Junior (h)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for subject in subjects %}
+                    <tr>
+                        <td>{{ subject.name }}</td>
+                        <td>{{ subject.middle_hours }}</td>
+                        <td>{{ subject.junior_hours }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table> 
+        </div>
+        <a href="{{ url_for('timetable.manage_hours') }}" class="btn btn-outline-primary btn-sm mt-2">Edit Hours</a>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="alert alert-success">
+            <h5>Ready to generate your timetable?</h5>
+            <p>Make sure all data is complete, then click the button below.</p>
+            <a href="{{ url_for('timetable.generate') }}" class="btn btn-success btn-lg">Generate Timetable</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

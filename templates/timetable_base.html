@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Timetable Generator{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Use main app's static endpoint for CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='timetable/style.css') }}">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+
+            <a class="navbar-brand" href="{{ url_for('timetable.index') }}">Timetable Generator</a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/">
+                    Main App
+                </a>
+                <a class="nav-link" href="{{ url_for('timetable.saved_timetables') }}">
+                    Saved Timetables
+                </a>
+                <a class="nav-link" href="/logout">Logout</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Step Progress Bar – only show on wizard pages -->
+        {% if current_step %}
+        <div class="row mb-4">
+            <div class="col">
+                <div class="d-flex justify-content-between">
+                    {% set steps = [
+                        ('Subjects', url_for('timetable.manage_subjects')),
+                        ('Hours', url_for('timetable.manage_hours')),
+                        ('Streams', url_for('timetable.manage_streams')),
+                        ('Teachers', url_for('timetable.manage_teachers')),
+                        ('Allocations', url_for('timetable.manage_allocations')),
+                        ('Generate', url_for('timetable.generate'))
+                    ] %}
+                    {% for label, url in steps %}
+                        {% set is_active = label == current_step %}
+                        <div class="step-item {% if is_active %}active{% endif %}">
+                            <span class="step-number">{{ loop.index }}</span>
+                            <span class="step-label">{{ label }}</span>
+                        </div>
+                        {% if not loop.last %}
+                            <div class="step-connector {% if loop.index < current_step_index %}filled{% endif %}"></div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Flash messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Page content -->
+        {% block content %}{% endblock %}
+
+        <!-- Navigation buttons – only show on wizard pages -->
+        {% if current_step %}
+        <div class="row mt-4">
+            <div class="col d-flex justify-content-between">
+                {% if prev_step_url %}
+                    <a href="{{ prev_step_url }}" class="btn btn-secondary">← Previous</a>
+                {% else %}
+                    <span></span>
+                {% endif %}
+                {% if next_step_url %}
+                    <a href="{{ next_step_url }}" class="btn btn-primary">Next →</a>
+                {% else %}
+                    <span></span>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

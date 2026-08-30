@@ -12,7 +12,7 @@
 </form>
 
 {% if current_user.role == 'admin' %}
-<a href="{{ url_for('main.add_subject') }}" class="btn btn-primary mb-3">Add Subject</a>
+<a href="{{ url_for('main.add_subject', grade=grade) }}" class="btn btn-success">Add Subject</a>
 {% endif %}
 
 <table class="table">
@@ -26,9 +26,8 @@
     <td>{{ subject.name }}</td>
     <td>
         {% if current_user.role == 'admin' %}
-            <a href="{{ url_for('main.edit_subject', id=subject.id) }}" class="btn btn-warning btn-sm">Edit</a>
-            <a href="{{ url_for('main.delete_subject', id=subject.id) }}" class="btn btn-danger btn-sm"
-               onclick="return confirm('Delete this subject?')">Delete</a>
+            <a href="{{ url_for('main.edit_subject', id=subject.id, grade=grade) }}" class="btn btn-warning btn-sm">Edit</a>
+<a href="{{ url_for('main.delete_subject', id=subject.id, grade=grade) }}" class="btn btn-danger btn-sm" onclick="return confirm(...)">Delete</a>
         {% endif %}
     </td>
 </tr>

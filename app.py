@@ -9,12 +9,13 @@ from datetime import timedelta
 from logging.handlers import RotatingFileHandler
 from flask_login import login_required, current_user, login_user, logout_user
 from flask import (Flask, abort, render_template, request, redirect,
-                   flash, url_for, send_file, g, has_request_context)
+                   flash, url_for, send_file, g, has_request_context, send_from_directory)
 from werkzeug.security import check_password_hash, generate_password_hash as _generate_password_hash
 from sqlalchemy.orm import joinedload
 from sqlalchemy import event
 
 from models import School, Student, Subject, Mark, User
+from utils.preferences import get_preference
 from seed import seed_subjects
 from extensions import db, migrate, cache, login_manager, mail
 from config import Config 
@@ -225,49 +226,111 @@ def create_app():
         if current_user.role not in ['admin', 'principal']:
             abort(403)
 
+        # Determine schools list
         if current_user.role == 'admin':
             schools = School.query.all()
         else:
-            schools = [School.query.get(current_user.school_id)]
+            schools = [School.query.get(current_user.school_id)] if current_user.school_id else []
 
+        # ---------- GET: show form with filters ----------
         if request.method == 'GET':
-            if current_user.role == 'admin':
-                if getattr(current_user, 'is_superadmin', False):
-                    users = User.query.filter(User.role != None).options(joinedload(User.school)).all()
-                else:
-                    users = User.query.filter(User.role != None, User.is_superadmin == False).options(joinedload(User.school)).all()
-            else:
-                users = User.query.filter_by(school_id=current_user.school_id, role='teacher').options(joinedload(User.school)).all()
-            return render_template("admin_users.html", schools=schools, users=users)
+            # 1. Read filter parameters
+            filter_school_id = request.args.get('filter_school_id')
+            filter_role = request.args.get('filter_role')
+            filter_grade = request.args.get('filter_grade')
+            filter_username = request.args.get('filter_username', '').strip()
 
-        # POST – create user
-        username = request.form['username']
-        role = request.form['role']
+            # 2. Build the base query
+            if current_user.role == 'admin':
+                query = User.query.filter(User.role != None, User.is_superadmin == False)
+            else:  # principal
+                query = User.query.filter_by(school_id=current_user.school_id, role='teacher')
+
+            # 3. Apply filters (if provided)
+            if filter_school_id:
+                query = query.filter(User.school_id == int(filter_school_id))
+            if filter_role:
+                query = query.filter(User.role == filter_role)
+            if filter_grade:
+                query = query.filter(User.grade == filter_grade)
+            if filter_username:
+                query = query.filter(User.username.ilike(f'%{filter_username}%'))
+
+            users = query.options(joinedload(User.school)).all()
+
+            # 4. Load global filters for the creation form (default school)
+            saved = get_preference('global_filters', {})
+            saved_school_id = saved.get('school_id')
+            if current_user.role == 'admin':
+                if saved_school_id and any(s.id == int(saved_school_id) for s in schools):
+                    selected_school_id = int(saved_school_id)
+                else:
+                    selected_school_id = schools[0].id if schools else None
+            else:
+                selected_school_id = current_user.school_id
+
+            selected_role = request.args.get('filter_role', 'teacher')
+            selected_grade = request.args.get('filter_grade', '')
+
+            # 5. Pass filters back to template
+            return render_template("admin_users.html",
+                                   schools=schools,
+                                   users=users,
+                                   selected_role=selected_role,
+                                   selected_school_id=selected_school_id,
+                                   selected_grade=selected_grade,
+                                   filter_school_id=filter_school_id,
+                                   filter_role=filter_role,
+                                   filter_grade=filter_grade,
+                                   filter_username=filter_username)
+
+        # ---------- POST: create user ----------
+        # Read form data
+        username = request.form.get('username', '').strip()
+        role = request.form.get('role')
         school_id = request.form.get('school_id')
         school_id = int(school_id) if school_id else None
         grade = request.form.get('grade')
 
         # ---- Validation ----
-        if current_user.role == 'principal':
-            if role != 'teacher':
-                flash("Principal can only create teacher accounts.", "danger")
-                return redirect(url_for('manage_users'))
-            if school_id != current_user.school_id:
-                flash("You can only create teachers for your own school.", "danger")
-                return redirect(url_for('manage_users'))
+        if not username:
+            flash("Username is required.", "danger")
+            return render_template("admin_users.html",
+                                   schools=schools,
+                                   users=User.query.filter_by(school_id=current_user.school_id, role='teacher').options(joinedload(User.school)).all() if current_user.role == 'principal' else User.query.filter(User.role != None, User.is_superadmin == False).options(joinedload(User.school)).all(),
+                                   selected_role=role,
+                                   selected_school_id=school_id,
+                                   selected_grade=grade)
+
+        if current_user.role == 'principal' and role != 'teacher':
+            flash("Principal can only create teacher accounts.", "danger")
+            return render_template("admin_users.html",
+                                   schools=schools,
+                                   users=User.query.filter_by(school_id=current_user.school_id, role='teacher').options(joinedload(User.school)).all(),
+                                   selected_role=role,
+                                   selected_school_id=school_id,
+                                   selected_grade=grade)
 
         if role != "admin" and not school_id:
             flash("Please select a school.", "danger")
-            return redirect(url_for('manage_users'))
+            return render_template("admin_users.html",
+                                   schools=schools,
+                                   users=User.query.filter_by(school_id=current_user.school_id, role='teacher').options(joinedload(User.school)).all() if current_user.role == 'principal' else User.query.filter(User.role != None, User.is_superadmin == False).options(joinedload(User.school)).all(),
+                                   selected_role=role,
+                                   selected_school_id=school_id,
+                                   selected_grade=grade)
+
         if role == "teacher" and not grade:
             flash("Grade is required for teachers.", "danger")
-            return redirect(url_for('manage_users'))
+            return render_template("admin_users.html",
+                                   schools=schools,
+                                   users=User.query.filter_by(school_id=current_user.school_id, role='teacher').options(joinedload(User.school)).all() if current_user.role == 'principal' else User.query.filter(User.role != None, User.is_superadmin == False).options(joinedload(User.school)).all(),
+                                   selected_role=role,
+                                   selected_school_id=school_id,
+                                   selected_grade=grade)
 
-        # ---- Generate random password ----
-        def generate_password(length=8):
-            return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
-        password_plain = generate_password()
-
+        # ---- Generate password and create user ----
+        password_plain = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
         user = User(
             username=username,
             password=generate_password_hash(password_plain),
@@ -278,6 +341,7 @@ def create_app():
         db.session.add(user)
         db.session.commit()
 
+        # ---- Success: show password once ----
         return render_template("user_created.html", username=username, password=password_plain)
 
     @app.route('/admin/users/edit/<int:id>', methods=['GET', 'POST'])
@@ -403,6 +467,14 @@ def create_app():
                 return redirect(url_for('login'))
 
         return render_template("login.html")
+        
+    @app.route('/favicon.ico')
+    def favicon():
+        return send_from_directory(app.static_folder, 'favicon.ico')
+
+    @app.route('/.well-known/appspecific/com.chrome.devtools.json')
+    def chrome_devtools_json():
+        return '', 204
 
     @app.route('/logout')
     @login_required
@@ -419,16 +491,16 @@ def create_app():
 
     @app.errorhandler(Exception)
     def log_exception(e):
+        username = getattr(g, 'username', 'Unknown')   # <-- safe access
         error_logger.error(
             f"Unhandled exception: {e}\n"
             f"Request: {request.method} {request.path}\n"
-            f"User: {g.username}\n"
+            f"User: {username}\n"
             f"{traceback.format_exc()}"
         )
         return render_template('error.html',
                                error_title="Internal Server Error",
                                error_message="An unexpected error occurred. The error has been logged."), 500
-
     return app
 
 

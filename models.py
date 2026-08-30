@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from extensions import db
 from datetime import datetime
+from timetable_app.models import TimetableSubject, Teacher, Stream, Allocation, Timetable
 
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -13,6 +14,7 @@ class User(UserMixin, db.Model):
     grade = db.Column(db.String(20), nullable=True)
     is_superadmin = db.Column(db.Boolean, default=False)
     school = db.relationship('School', backref='users')
+    preferences = db.Column(db.Text, default='{}')
 
 class School(db.Model):
     __tablename__ = 'school'
@@ -51,6 +53,7 @@ class Subject(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), nullable=False)
     grade = db.Column(db.String(20), nullable=False)
+    
 
 class Mark(db.Model):
     __tablename__ = 'mark'

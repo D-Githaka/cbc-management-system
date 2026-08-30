@@ -4,6 +4,7 @@ from flask_login import login_required, current_user
 from extensions import db
 from models import School, Student, Subject, Mark
 from utils.helpers import cbc_grade
+from utils.preferences import get_preference, merge_preferences
 from sqlalchemy import func
 from datetime import datetime
 
@@ -12,7 +13,7 @@ marks_bp = Blueprint('marks', __name__)
 @marks_bp.route('/marks')
 @login_required
 def marks():
-    # For teachers: show their own submissions
+    # For teachers: show submissions + entry form
     if current_user.role == 'teacher':
         subs = db.session.query(
             Student.grade,
@@ -39,41 +40,120 @@ def marks():
                 'status': 'Approved' if row.approved == row.total else 'Pending',
                 'submitted_at': row.submitted_at
             })
-        return render_template('marks_teacher.html', submissions=submissions)
 
-    # For admin/principal: existing logic
-    schools = School.query.all()
-    return render_template('marks.html', schools=schools)
+        # Reuse the same template, but mark teacher and pre‑fill school/grade
+        teacher_school = School.query.get(current_user.school_id)
+        return render_template(
+            'marks.html',
+            schools=[],                          # not used for teacher
+            is_teacher=True,
+            teacher_school=teacher_school,
+            teacher_grade=current_user.grade,
+            submissions=submissions
+        )
 
+    # Admin / Principal: existing logic
+    school_id = request.args.get('school_id')
+    grade = request.args.get('grade')
+    term = request.args.get('term')
+    year = request.args.get('year')
+    exam = request.args.get('exam')
+
+    updates = {}
+    if 'school_id' in request.args:
+        updates['school_id'] = school_id or ''
+    if 'grade' in request.args:
+        updates['grade'] = grade or ''
+    if 'term' in request.args:
+        updates['term'] = term or ''
+    if 'year' in request.args:
+        updates['year'] = year or ''
+    if 'exam' in request.args:
+        updates['exam'] = exam or ''
+
+    if updates:
+        merge_preferences(updates)
+
+    saved = get_preference('global_filters', {})
+
+    if current_user.role == 'principal':
+        school_id = current_user.school_id
+        grade = saved.get('grade', 'Grade 1')
+        schools = [School.query.get(school_id)] if school_id else []
+    else:  # admin
+        schools = School.query.all()
+        # Use saved school_id if exists, else default to first school
+        school_id = saved.get('school_id')
+        if not school_id and schools:
+            school_id = schools[0].id
+        else:
+            school_id = int(school_id) if school_id else None
+        grade = saved.get('grade', 'Grade 1')
+
+    term = saved.get('term', 'Term 1')
+    year = saved.get('year', str(datetime.now().year))
+    exam = saved.get('exam', 'Exam 1')
+    
+    schools = School.query.all() if current_user.role == 'admin' else [School.query.get(school_id)]
+    return render_template('marks.html',
+                           schools=schools,
+                           is_teacher=False,
+                           selected_school_id=school_id,
+                           selected_grade=grade,
+                           selected_term=term,
+                           selected_year=year,
+                           selected_exam=exam)
 # Enter Marks
 @marks_bp.route('/enter_marks', methods=['GET'])
 @login_required
 def enter_marks():
-
+    # Read params
+    school_id = request.args.get('school_id')
     grade = request.args.get('grade')
     term = request.args.get('term')
     year = request.args.get('year')
     exam = request.args.get('exam', 'Exam 1')
 
-    if not year:
-        year = str(datetime.now().year)
-    # -------------------------
-    # ROLE-BASED SCHOOL LOGIC
-    # -------------------------
-    if current_user.role == "admin":
-        school_id = request.args.get('school_id')
+    # Save any filter that is present
+    updates = {}
+    if 'school_id' in request.args:
+        updates['school_id'] = school_id or ''
+    if 'grade' in request.args:
+        updates['grade'] = grade or ''
+    if 'term' in request.args:
+        updates['term'] = term or ''
+    if 'year' in request.args:
+        updates['year'] = year or ''
+    if 'exam' in request.args:
+        updates['exam'] = exam or ''
+
+    if updates:
+        merge_preferences(updates)
+
+    # Load saved (if no params provided)
+    saved = get_preference('global_filters', {})
+    # Use request values if present, else saved
+    school_id = school_id or saved.get('school_id')
+    grade = grade or saved.get('grade')
+    term = term or saved.get('term', 'Term 1')
+    year = year or saved.get('year', str(datetime.now().year))
+    exam = exam or saved.get('exam', 'Exam 1')
+
+    # Role overrides
+    if current_user.role == 'teacher':
+        school_id = current_user.school_id
+        grade = current_user.grade
+    elif current_user.role == 'principal':
+        school_id = current_user.school_id
+        # grade may be None, fallback to saved or Grade 1
+        grade = grade or saved.get('grade', 'Grade 1')
+    else:  # admin
+        # ensure school_id is set
         if not school_id:
             flash("Please select a school first.", "warning")
             return redirect(url_for('marks.marks'))
-    else:
-        school_id = current_user.school_id
 
-    # -------------------------
-    # TEACHER GRADE LOCK
-    # -------------------------
-    if current_user.role == "teacher":
-        grade = current_user.grade
-
+    # Validate school
     school = School.query.get(school_id)
     if not school:
         return "Invalid school", 404

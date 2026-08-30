@@ -12,14 +12,14 @@
                 {% endfor %}
             </select>
         </div>
-<div class="col-md-2">
-    <select name="exam" class="form-select">
-        <option value="">All Exams</option>
-        {% for e in exams %}
-            <option value="{{ e }}" {% if exam == e %}selected{% endif %}>{{ e }}</option>
-        {% endfor %}
-    </select>
-</div>
+        <div class="col-md-2">
+            <select name="exam" class="form-select">
+                <option value="">All Exams</option>
+                {% for e in exams %}
+                    <option value="{{ e }}" {% if exam == e %}selected{% endif %}>{{ e }}</option>
+                {% endfor %}
+            </select>
+        </div>
         <div class="col-md-2">
             <select name="year" class="form-control">
                 <option value="">Year</option>
@@ -33,16 +33,17 @@
             <select name="school_id" class="form-select" onchange="this.form.submit()">
                 <option value="">All Schools</option>
                 {% for s in schools %}
-                    <option value="{{ s.id }}" {% if request.args.get('school_id')|int == s.id %}selected{% endif %}>{{ s.name }}</option>
+                    <option value="{{ s.id }}" {% if s.id == selected_school_id %}selected{% endif %}>{{ s.name }}</option>
                 {% endfor %}
             </select>
         </div>
         {% endif %}
+
         <div class="col-md-2">
             <select name="grade" class="form-select" onchange="this.form.submit()">
                 <option value="">All Grades</option>
                 {% for g in grades %}
-                    <option value="{{ g }}" {% if request.args.get('grade') == g %}selected{% endif %}>{{ g }}</option>
+                    <option value="{{ g }}" {% if g == selected_grade %}selected{% endif %}>{{ g }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -74,7 +75,7 @@
                             {% for subj in subjects %}
                                 <td>{{ row.subjects.get(subj, '-') }}</td>
                             {% endfor %}
-                            <td><strong>{{ row.total }}</strong></td>
+                            <td><strong>{{ row.total | round(2) }}</strong></td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -84,90 +85,166 @@
     {% endif %}
 
     <!-- ========== SINGLE SCHOOL VIEW ========== -->
-    {% if single_school %}
-        {% if grade %}
-            <!-- Student-level marks for a specific grade -->
-            <h3>{{ grade }}</h3>
-            <div class="card p-3 shadow-sm mb-4">
-                <div class="table-responsive">
-                    <table class="table table-sm table-bordered">
-                        <thead>
-                            <tr>
-                                <th>Position</th>                           <!-- new -->
-                                <th>Student</th>
-                                {% for subj in subject_names %}
-                                    <th>{{ subj }}</th>
-                                {% endfor %}
-                                <th>Total</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for sd in student_data %}
-                            <tr>
-                                <td>{{ sd.position }}</td>                  <!-- new -->
-                                <td>{{ sd.name }} ({{ sd.gender }})</td>
-                                {% for subj in subject_names %}
-                                    <td>{{ sd.scores[subj] if sd.scores[subj] is not none else '-' }}</td>
-                                {% endfor %}
-                                <td><strong>{{ sd.total }}</strong></td>
-                            </tr>
-                            {% endfor %}
-                            <!-- Summary rows -->
-                            <tr class="table-secondary">
-                                <td></td>                                   <!-- empty for Position -->
-                                <td><strong>Total</strong></td>
-                                {% for subj in subject_names %}
-                                    <td><strong>{{ totals_row[subj] }}</strong></td>
-                                {% endfor %}
-                                <td><strong>{{ grand_total }}</strong></td>
-                            </tr>
-                            <tr class="table-secondary">
-                                <td></td>                                   <!-- empty for Position -->
-                                <td><strong>Average</strong></td>
-                                {% for subj in subject_names %}
-                                    <td><strong>{{ avg_row[subj] }}</strong></td>
-                                {% endfor %}
-                                <td><strong>{{ grand_avg }}</strong></td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+    {% if single_school and grade %}
+        <h3>{{ grade }}</h3>
+        <div class="card p-3 shadow-sm mb-4">
+            <div style="height: 500px; width: 100%;">
+                <div id="studentGrid" class="ag-theme-alpine" style="height: 500px; width: 100%;"></div>
             </div>
-        {% else %}
-            <!-- Grade-level averages (no specific grade selected) -->
-            <div class="card p-3 shadow-sm mb-4">
-                <div class="table-responsive">
-                    <table class="table table-sm table-bordered">
-                        <thead>
-                            <tr>
-                                <th>Position</th>
-                                <th>Grade</th>
-                                {% for subj in all_subjects %}
-                                    <th>{{ subj }}</th>
-                                {% endfor %}
-                                <th>Total Avg</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for row in grade_averages %}
-                            <tr>
-                                <td>{{ row.position }}</td>
-                                <td>{{ row.grade }}</td>
-                                {% for subj in all_subjects %}
-                                    <td>{{ row.averages[subj] }}</td>
-                                {% endfor %}
-                                <td><strong>{{ row.total }}</strong></td>
-                            </tr>
+        </div>
+
+        <!-- Summary rows (Totals & Averages) – rounded to 2 decimals -->
+        <div class="card p-3 shadow-sm mb-4">
+            <table class="table table-sm table-bordered">
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th>Student</th>
+                        {% for subj in subject_names %}
+                            <th>{{ subj }}</th>
+                        {% endfor %}
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Totals row -->
+                    <tr class="table-secondary">
+                        <td></td>
+                        <td><strong>Total</strong></td>
+                        {% for subj in subject_names %}
+                            <td><strong>{{ totals_row[subj] | round(2) }}</strong></td>
+                        {% endfor %}
+                        <td><strong>{{ grand_total | round(2) }}</strong></td>
+                    </tr>
+                    <!-- Averages row -->
+                    <tr class="table-secondary">
+                        <td></td>
+                        <td><strong>Average</strong></td>
+                        {% for subj in subject_names %}
+                            <td><strong>{{ avg_row[subj] | round(2) }}</strong></td>
+                        {% endfor %}
+                        <td><strong>{{ grand_avg | round(2) }}</strong></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    {% endif %}
+
+    <!-- ========== GRADE AVERAGES (no grade selected) ========== -->
+    {% if single_school and not grade %}
+        <div class="card p-3 shadow-sm mb-4">
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Position</th>
+                            <th>Grade</th>
+                            {% for subj in all_subjects %}
+                                <th>{{ subj }}</th>
                             {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
+                            <th>Total Avg</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in grade_averages %}
+                        <tr>
+                            <td>{{ row.position }}</td>
+                            <td>{{ row.grade }}</td>
+                            {% for subj in all_subjects %}
+                                <td>{{ row.averages[subj] | round(2) }}</td>
+                            {% endfor %}
+                            <td><strong>{{ row.total | round(2) }}</strong></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
-        {% endif %}
+        </div>
     {% endif %}
 </div>
 
 <a href="{{ url_for('reports.reports_school_excel', **request.args) }}" class="btn btn-success mt-3">
     📥 Download Excel Report
 </a>
+
+<script>
+{% if single_school and grade %}
+    // Prepare data for AG Grid – ROUND TO 2 DECIMALS
+    const subjectNames = {{ subject_names|tojson }};
+    const studentData = {{ student_data|tojson }};
+
+    // Build column definitions
+    const columnDefs = [
+        { headerName: 'Position', field: 'position', width: 80, sortable: true, filter: false, resizable: true },
+        { headerName: 'Student', field: 'student', width: 200, sortable: true, filter: false, resizable: true },
+        { headerName: 'Gender', field: 'gender', width: 100, sortable: true, filter: false, resizable: true }
+    ];
+
+    // Add subject columns
+    subjectNames.forEach(sub => {
+        columnDefs.push({
+            headerName: sub,
+            field: 'sub_' + sub,
+            width: 100,
+            sortable: true,
+            filter: false,
+            resizable: true,
+            cellStyle: { textAlign: 'center' }
+        });
+    });
+
+    // Add Total column
+    columnDefs.push({
+        headerName: 'Total',
+        field: 'total',
+        width: 100,
+        sortable: true,
+        filter: false,
+        resizable: true,
+        cellStyle: { fontWeight: 'bold' }
+    });
+
+    // Build row data – round each numeric value to 2 decimals
+    const rowData = studentData.map(s => {
+        const row = {
+            position: s.position,
+            student: s.name,
+            gender: s.gender,
+            total: typeof s.total === 'number' ? s.total.toFixed(2) : s.total
+        };
+        subjectNames.forEach(sub => {
+            const val = s.scores[sub];
+            if (val !== null && val !== undefined && !isNaN(val)) {
+                row['sub_' + sub] = Number(val).toFixed(2);
+            } else {
+                row['sub_' + sub] = '-';
+            }
+        });
+        return row;
+    });
+
+    const gridOptions = {
+        columnDefs: columnDefs,
+        rowData: rowData,
+        defaultColDef: {
+            resizable: true,
+            sortable: true,
+            filter: false,
+            editable: false,
+            enableCellTextSelection: false
+        },
+        enableCellTextSelection: false,
+        ensureDomOrder: false,
+        enableClipboard: false,
+        getContextMenuItems: () => []
+    };
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const gridDiv = document.querySelector('#studentGrid');
+        if (gridDiv && window.agGrid) {
+            const gridApi = agGrid.createGrid(gridDiv, gridOptions);
+        }
+    });
+{% endif %}
+</script>
 {% endblock %}

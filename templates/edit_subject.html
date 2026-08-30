@@ -2,13 +2,20 @@
 
 {% block content %}
 <h2>Edit Subject</h2>
-<a href="{{ url_for('main.subjects') }}" class="text-decoration-none mb-3 d-inline-block">← Back to Subjects</a>
+
+<!-- Back link with preserved grade -->
+<a href="{{ url_for('main.subjects', grade=request.args.get('grade')) }}" class="text-decoration-none mb-3 d-inline-block">← Back to Subjects</a>
+
 <form method="POST" class="card p-4 shadow-sm">
     <div class="mb-3">
         <label>Subject Name</label>
-        <input type="text" name="name"
-               value="{{ subject.name }}"
-               class="form-control">
+        <input type="text" name="name" value="{{ subject.name }}" class="form-control">
+    </div>
+
+    <!-- Optional: show the grade as read-only (not editable) -->
+    <div class="mb-3">
+        <label>Grade</label>
+        <input type="text" class="form-control" value="{{ subject.grade }}" disabled>
     </div>
 
     <button class="btn btn-success">Update</button>

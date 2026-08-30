@@ -4,6 +4,7 @@ from flask import (Blueprint, render_template, request, abort,
 from flask_login import login_required, current_user
 from extensions import db
 from models import School, Student, Subject, Mark
+from utils.preferences import get_preference, merge_preferences
 from sqlalchemy import func, case
 import pandas as pd
 import io
@@ -26,20 +27,58 @@ def reports_school():
     if current_user.role not in ['admin', 'principal', 'teacher']:
         abort(403)
 
-    selected_term = request.args.get('term', 'Term 1')
+    # ---------- 1. Read request parameters ----------
+    school_id = request.args.get('school_id')
+    grade_filter = request.args.get('grade')
+    term = request.args.get('term')
+    year = request.args.get('year')
     exam = request.args.get('exam')
-    selected_year = request.args.get('year')
-    top_n = int(request.args.get('top_n', 3))
+    top_n = request.args.get('top_n', 3)
 
-    # Scoping
-    if current_user.role == 'admin':
-        school_id = request.args.get('school_id')
+    # ---------- 2. Save any filter that is present ----------
+    updates = {}
+    if 'school_id' in request.args:
+        updates['school_id'] = school_id or ''
+    if 'grade' in request.args:
+        updates['grade'] = grade_filter or ''
+    if 'term' in request.args:
+        updates['term'] = term or ''
+    if 'year' in request.args:
+        updates['year'] = year or ''
+    if 'exam' in request.args:
+        updates['exam'] = exam or ''
+    if 'top_n' in request.args:
+        updates['top_n'] = top_n or ''
+
+    if updates:
+        merge_preferences(updates)
+
+    # ---------- 3. Load saved global filters ----------
+    saved = get_preference('global_filters', {})
+
+    # ---------- 4. Role overrides and fallbacks ----------
+    if current_user.role == 'teacher':
+        school_id = current_user.school_id
+        grade_filter = current_user.grade   # forced
+        # term, year, exam, top_n can still come from saved
     elif current_user.role == 'principal':
         school_id = current_user.school_id
-    else:
-        school_id = current_user.school_id
+        # grade can be from request (if provided) or saved, else fallback
+        if 'grade' not in request.args:
+            grade_filter = saved.get('grade', 'Grade 1')
+    else:  # admin
+        # If no school_id in request, use saved, else None (all schools)
+        if 'school_id' not in request.args:
+            school_id = saved.get('school_id', None)
+        # grade: if not in request, use saved or fallback
+        if 'grade' not in request.args:
+            grade_filter = saved.get('grade', 'Grade 1')
 
-    grade_filter = request.args.get('grade')
+    # Term, year, exam, top_n fallbacks
+    selected_term = term or saved.get('term', 'Term 1')
+    selected_year = year or saved.get('year', '')
+    exam = exam or saved.get('exam', '')
+    top_n = int(top_n or saved.get('top_n', 3))
 
     # ---- Helper: apply term / year / exam to any Mark query ----
     def apply_filters(query):
@@ -113,6 +152,8 @@ def reports_school():
             all_schools=True,
             all_school_rows=all_school_rows,
             subjects=subjects,
+            selected_school_id=school_id,    # or None for "All Schools"
+            selected_grade=grade_filter,     # or None for "All Grades"
             selected_term=selected_term,
             selected_year=selected_year,
             exam=exam,
@@ -127,36 +168,43 @@ def reports_school():
     school = School.query.get_or_404(int(school_id))
 
     if grade_filter:
-        # ---- Student level ----
+# ---- Student level ----
         students = Student.query.filter_by(
             school_id=school.id, grade=grade_filter
         ).order_by(Student.name).all()
         student_ids = [s.id for s in students]
 
-        marks_query = apply_filters(Mark.query).filter(
-            Mark.student_id.in_(student_ids)
-        ).join(Subject)
-
         grade_subjects = Subject.query.filter_by(grade=grade_filter).all()
         subject_names = sorted({s.name for s in grade_subjects})
+
+        # Build aggregated query: average per student per subject
+        marks_query = db.session.query(
+            Mark.student_id,
+            Subject.name.label('subject_name'),
+            func.avg(Mark.score).label('avg_score')   # average across exams/terms/years
+        ).join(Subject, Mark.subject_id == Subject.id)\
+         .filter(Mark.student_id.in_(student_ids))
+
+        marks_query = apply_filters(marks_query)   # applies term, year, exam filters
+        marks_query = marks_query.group_by(Mark.student_id, Subject.name)
 
         student_data = {s.id: {'id': s.id, 'name': s.name, 'gender': s.gender,
                                'scores': {subj: None for subj in subject_names},
                                'total': 0} for s in students}
 
-        for m in marks_query.all():
-            if m.subject and m.student_id in student_data:
-                student_data[m.student_id]['scores'][m.subject.name] = m.score
+        for student_id, subject_name, avg_score in marks_query.all():
+            if student_id in student_data:
+                student_data[student_id]['scores'][subject_name] = avg_score
 
+        # Compute totals (sum of subject averages) and positions
         for sd in student_data.values():
             sd['total'] = sum(v for v in sd['scores'].values() if v is not None)
 
-        # ---- NEW: Sort by total descending and assign position ----
         student_list = sorted(student_data.values(), key=lambda x: x['total'], reverse=True)
         for idx, sd in enumerate(student_list, start=1):
             sd['position'] = idx
 
-        # Summary rows (totals and averages) - unchanged
+        # Summary rows (totals and averages)
         totals_row = {subj: 0 for subj in subject_names}
         counts = {subj: 0 for subj in subject_names}
         for sd in student_data.values():
@@ -171,6 +219,7 @@ def reports_school():
         grand_total = sum(totals_row.values())
         student_count = len(students) or 1
         grand_avg = round(grand_total / student_count, 2)
+
 
         return render_template(
             'school_reports.html',
@@ -402,21 +451,57 @@ def reports_school_excel():
 def reports_student():
     if current_user.role not in ['admin', 'principal', 'teacher']:
         abort(403)
+    # ---------- 1. Read request parameters ----------
+    school_id = request.args.get('school_id')
+    grade = request.args.get('grade')
+    term = request.args.get('term')
+    year = request.args.get('year')
+    exam = request.args.get('exam')
+    top_n = request.args.get('top_n', 3)
+
+    # ---------- 2. Save any filter that is present ----------
+    updates = {}
+    if 'school_id' in request.args:
+        updates['school_id'] = school_id or ''
+    if 'grade' in request.args:
+        updates['grade'] = grade_filter or ''
+    if 'term' in request.args:
+        updates['term'] = term or ''
+    if 'year' in request.args:
+        updates['year'] = year or ''
+    if 'exam' in request.args:
+        updates['exam'] = exam or ''
+    if 'top_n' in request.args:
+        updates['top_n'] = top_n or ''
+
+    if updates:
+        merge_preferences(updates)
+
+    # ---------- 3. Load saved global filters ----------
+    saved = get_preference('global_filters', {})
+
+    # ---------- 4. Role overrides and fallbacks ----------
+    if current_user.role == 'teacher':
+        school_id = current_user.school_id
+        grade = current_user.grade   # forced
+        # term, year, exam, top_n can still come from saved
+    elif current_user.role == 'principal':
+        school_id = current_user.school_id
+        # grade can be from request (if provided) or saved, else fallback
+        if 'grade' not in request.args:
+            grade = saved.get('grade', 'Grade 1')
+    else:  # admin
+        # If no school_id in request, use saved, else None (all schools)
+        if 'school_id' not in request.args:
+            school_id = saved.get('school_id', None)
+        # grade: if not in request, use saved or fallback
+        if 'grade' not in request.args:
+            grade = saved.get('grade', 'Grade 1')
 
     selected_term = request.args.get('term', 'Term 1')
     exam = request.args.get('exam')
     selected_year = request.args.get('year')
     top_n = int(request.args.get('top_n', 3))
-
-    if current_user.role == 'admin':
-        school_id = request.args.get('school_id')
-        grade = request.args.get('grade', 'Grade 1')
-    elif current_user.role == 'principal':
-        school_id = current_user.school_id
-        grade = request.args.get('grade', 'Grade 1')
-    else:
-        school_id = current_user.school_id
-        grade = current_user.grade
 
     # ---- Helper: top students by gender and school type (optimised with window function) ----
     def get_top_students(gender, school_type):
@@ -544,24 +629,56 @@ def reports_cbc():
     if current_user.role not in ['admin', 'principal', 'teacher']:
         abort(403)
 
-    selected_term = request.args.get('term', 'Term 1')
-    selected_year = request.args.get('year', '2026')
-    exam = request.args.get('exam', 'Exam 1')
+    # ---------- 1. Read request parameters ----------
+    school_id = request.args.get('school_id')
+    grade = request.args.get('grade')
+    term = request.args.get('term')
+    year = request.args.get('year')
+    exam = request.args.get('exam')
 
-    # ---- Scoping ----
-    if current_user.role == 'admin':
-        school_id = request.args.get('school_id')
-        grade = request.args.get('grade', 'Grade 1')
+    # ---------- 2. Save any filter that is present ----------
+    updates = {}
+    if 'school_id' in request.args:
+        updates['school_id'] = school_id or ''
+    if 'grade' in request.args:
+        updates['grade'] = grade or ''
+    if 'term' in request.args:
+        updates['term'] = term or ''
+    if 'year' in request.args:
+        updates['year'] = year or ''
+    if 'exam' in request.args:
+        updates['exam'] = exam or ''
+
+    if updates:
+        merge_preferences(updates)
+
+    # ---------- 3. Load saved global filters ----------
+    saved = get_preference('global_filters', {})
+
+    # ---------- 4. Role overrides and fallbacks ----------
+    if current_user.role == 'teacher':
+        school_id = current_user.school_id
+        grade = current_user.grade   # forced
     elif current_user.role == 'principal':
         school_id = current_user.school_id
-        grade = request.args.get('grade', 'Grade 1')
-    else:  # teacher
-        school_id = current_user.school_id
-        grade = current_user.grade
+        if 'grade' not in request.args:
+            grade = saved.get('grade', 'Grade 1')
+    else:  # admin
+        if 'school_id' not in request.args:
+            school_id = saved.get('school_id', None)  # None means "Select School"
+        if 'grade' not in request.args:
+            grade = saved.get('grade', 'Grade 1')
 
+    # Fallbacks for term, year, exam
+    selected_term = term or saved.get('term', 'Term 1')
+    selected_year = year or saved.get('year', '')
+    exam = exam or saved.get('exam', '')
+
+    # ---------- 5. Build results (if school is selected) ----------
     results = []
-    if school_id:
-        # Use the helper to apply filters (optional, but we can inline)
+    if school_id and school_id != '':
+        # Convert to int safely
+        school_id_int = int(school_id)
         level_counts = db.session.query(
             Subject.name.label('subject'),
             func.sum(case((Mark.score >= 80, 1), else_=0)).label('EE'),
@@ -573,27 +690,24 @@ def reports_cbc():
          .join(Subject, Mark.subject_id == Subject.id)\
          .join(Student, Mark.student_id == Student.id)\
          .filter(
-             Student.school_id == int(school_id),
+             Student.school_id == school_id_int,
              Student.grade == grade,
              Mark.term == selected_term,
              Mark.year == int(selected_year) if selected_year else None,
              Mark.exam == exam
          ).group_by(Subject.name)
 
-        results = level_counts.all()   # assign to results
+        results = level_counts.all()
 
-    # ---- Determine school name ----
+    # ---------- 6. Determine school name ----------
     school_name = None
-    if school_id:
+    if school_id and school_id != '':
         school = School.query.get(int(school_id))
         if school:
             school_name = school.name
 
+    # ---------- 7. Render ----------
     schools = School.query.all() if current_user.role == 'admin' else []
-    all_grades = ALL_GRADES
-    terms = TERMS
-    exams = EXAMS
-
     return render_template('cbc_reports.html',
                            results=results,
                            selected_term=selected_term,
@@ -602,9 +716,10 @@ def reports_cbc():
                            school_name=school_name,
                            grade=grade,
                            schools=schools,
-                           grades=all_grades,
-                           terms=terms,
-                           exams=exams)
+                           grades=ALL_GRADES,
+                           terms=TERMS,
+                           exams=EXAMS,
+                           selected_school_id=school_id)  # <-- ADD THIS
 
 @reports_bp.route('/student/<int:student_id>/term_report')
 @login_required

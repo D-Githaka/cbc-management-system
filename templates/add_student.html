@@ -1,18 +1,23 @@
 {% extends 'base.html' %}
 {% block content %}
 <h2>Add Student</h2>
-<a href="{{ url_for('main.students') }}" class="text-decoration-none mb-3 d-inline-block">← Back to Students</a>
+
+<!-- Back link with preserved filters -->
+<a href="{{ url_for('main.students', **request.args) }}" class="text-decoration-none mb-3 d-inline-block">← Back to Students</a>
+
 <form method="POST" class="card p-4 shadow-sm">
     <div class="mb-3">
         <label>Name</label>
         <input type="text" name="name" class="form-control" required>
     </div>
+
     <div class="mb-3">
         <label class="form-label">Admission Number (leave blank to auto‑generate)</label>
         <input type="text" name="admission_number" class="form-control"
-               value="{{ student.admission_number if student else '' }}"
                placeholder="e.g. SCH-001-ADM-0001">
     </div>
+
+    <!-- Grade field -->
     <div class="mb-3">
         <label>Grade</label>
         <select name="grade" class="form-select"
@@ -20,16 +25,26 @@
             {% if current_user.role == 'teacher' %}
                 <option value="{{ current_user.grade }}" selected>{{ current_user.grade }}</option>
             {% else %}
-                <option>PP1</option><option>PP2</option>
-                <option>Grade 1</option><option>Grade 2</option><option>Grade 3</option>
-                <option>Grade 4</option><option>Grade 5</option><option>Grade 6</option>
-                <option>Grade 7</option><option>Grade 8</option><option>Grade 9</option>
+                {% set selected_grade = request.args.get('grade', 'Grade 1') %}
+                <option value="PP1" {% if selected_grade == 'PP1' %}selected{% endif %}>PP1</option>
+                <option value="PP2" {% if selected_grade == 'PP2' %}selected{% endif %}>PP2</option>
+                <option value="Grade 1" {% if selected_grade == 'Grade 1' %}selected{% endif %}>Grade 1</option>
+                <option value="Grade 2" {% if selected_grade == 'Grade 2' %}selected{% endif %}>Grade 2</option>
+                <option value="Grade 3" {% if selected_grade == 'Grade 3' %}selected{% endif %}>Grade 3</option>
+                <option value="Grade 4" {% if selected_grade == 'Grade 4' %}selected{% endif %}>Grade 4</option>
+                <option value="Grade 5" {% if selected_grade == 'Grade 5' %}selected{% endif %}>Grade 5</option>
+                <option value="Grade 6" {% if selected_grade == 'Grade 6' %}selected{% endif %}>Grade 6</option>
+                <option value="Grade 7" {% if selected_grade == 'Grade 7' %}selected{% endif %}>Grade 7</option>
+                <option value="Grade 8" {% if selected_grade == 'Grade 8' %}selected{% endif %}>Grade 8</option>
+                <option value="Grade 9" {% if selected_grade == 'Grade 9' %}selected{% endif %}>Grade 9</option>
             {% endif %}
         </select>
         {% if current_user.role == 'teacher' %}
             <input type="hidden" name="grade" value="{{ current_user.grade }}">
         {% endif %}
     </div>
+
+    <!-- Gender field -->
     <div class="mb-3">
         <label>Gender</label>
         <select name="gender" class="form-select" required>
@@ -37,6 +52,8 @@
             <option value="F">Female</option>
         </select>
     </div>
+
+    <!-- School field -->
     <div class="mb-3">
         <label>School</label>
         <select name="school_id" class="form-select"
@@ -44,7 +61,10 @@
             {% if current_user.role == 'admin' %}
                 <option value="">Select School</option>
                 {% for school in schools %}
-                    <option value="{{ school.id }}">{{ school.name }}</option>
+                    <option value="{{ school.id }}"
+                        {% if school.id|string == request.args.get('school_id') %}selected{% endif %}>
+                        {{ school.name }}
+                    </option>
                 {% endfor %}
             {% else %}
                 <option value="{{ schools[0].id }}" selected>{{ schools[0].name }}</option>
@@ -54,9 +74,11 @@
             <input type="hidden" name="school_id" value="{{ schools[0].id }}">
         {% endif %}
     </div>
-    <input type="hidden" name="grade" value="{{ request.args.get('grade') }}">
+
+    <!-- Hidden fields to pass term and year back to students page after addition -->
     <input type="hidden" name="term" value="{{ request.args.get('term') }}">
     <input type="hidden" name="year" value="{{ request.args.get('year') }}">
+
     <button class="btn btn-success">Add Student</button>
 </form>
 {% endblock %}

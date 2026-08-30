@@ -12,6 +12,10 @@ class Config:
     REMEMBER_COOKIE_SECURE = os.environ.get('FLASK_ENV') == 'production'
     ADMIN_SECRET = os.environ.get('ADMIN_SECRET_KEY')
 
+    SESSION_COOKIE_DOMAIN = None  # for localhost; for production use your domain
+    SESSION_COOKIE_PATH = '/'
+    SESSION_COOKIE_SECURE = False  # True in production with HTTPS
+
     CACHE_TYPE = 'FileSystemCache'
     CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cache')
     CACHE_DEFAULT_TIMEOUT = 900  # 15 minutes

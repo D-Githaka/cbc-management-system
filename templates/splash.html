@@ -157,7 +157,7 @@
             <!-- Timetable Generator -->
             <div class="col-md-4">
                 {% if current_user.is_authenticated and current_user.role in ['admin','principal'] %}
-                <a href="{{ url_for('main.timetable_page') }}" class="feature-card text-center">
+                <a href="/timetable" class="feature-card text-center">
                 {% else %}
                 <div class="feature-card text-center">
                 {% endif %}

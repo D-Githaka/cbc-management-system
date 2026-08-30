@@ -2,18 +2,24 @@
 {% block content %}
 <div id="analyticsExportArea">
 <h2>Analytics Dashboard</h2>
-
+<div id="analytics-data" 
+     data-school-id="{{ selected_school_id }}" 
+     data-grade="{{ selected_grade }}" 
+     data-exam="{{ selected_exam }}" 
+     data-year="{{ selected_year }}" 
+     data-term="{{ selected_term }}">
+</div>
 <!-- FILTER PANEL -->
 <div class="card p-4 mb-3 shadow-sm">
-    <form id="filterForm">
-        <div class="row g-3">
+    <form id="filterForm" method="GET" action="{{ url_for('main.analytics') }}">
+            <div class="row g-3">
 
             <!-- SCHOOL -->
             <div class="col-md-3">
                 <select name="school_id" id="schoolSelect" class="form-control" required>
                     <option value="">Select School</option>
                     {% for s in schools %}
-                        <option value="{{ s.id }}">{{ s.name }}</option>
+                        <option value="{{ s.id }}" {% if s.id|string == selected_school_id|string %}selected{% endif %}>{{ s.name }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -40,7 +46,7 @@
                 <select name="year" class="form-control">
                     <option value="">Year</option>
                     {% for y in range(2021, 2031) %}
-                        <option value="{{ y }}">{{ y }}</option>
+                        <option value="{{ y }}" {% if y|string == selected_year|string %}selected{% endif %}>{{ y }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -58,7 +64,7 @@
         </div>
 
         <br>
-        <button class="btn btn-primary">Apply Filters</button>
+        <button class="btn btn-primary" type="submit">Apply Filters</button>
     </form>
 </div>
 
@@ -168,17 +174,17 @@ class AnalyticsController {
         this.examSelect.addEventListener("change", e =>
             this.setState({ exam: e.target.value })
         );
-        document.getElementById("filterForm").addEventListener("submit", e => {
-            e.preventDefault();
-            const fd = new FormData(e.target);
-            this.setState({
-                school_id: fd.get("school_id"),
-                grade: fd.get("grade") || "Grade 9",
-                exam: fd.get("exam") || "",
-                year: fd.get("year"),
-                term: fd.get("term")
-            });
-        });
+        // document.getElementById("filterForm").addEventListener("submit", e => {
+        //     e.preventDefault();
+        //     const fd = new FormData(e.target);
+        //     this.setState({
+        //         school_id: fd.get("school_id"),
+        //         grade: fd.get("grade") || "Grade 9",
+        //         exam: fd.get("exam") || "",
+        //         year: fd.get("year"),
+        //         term: fd.get("term")
+        //     });
+        // });
 
         document.addEventListener("visibilitychange", () => {
             this.isTabActive = !document.hidden;
@@ -267,38 +273,37 @@ class AnalyticsController {
         }
     }
 
-    async restoreFromURL() {
-        const params = new URLSearchParams(window.location.search);
-        this.state.school_id = params.get("school_id") || "";
-        this.state.grade = params.get("grade") || "Grade 9";
-        this.state.exam = params.get("exam") || "";
-        this.state.year = params.get("year") || "";
-        this.state.term = params.get("term") || "";
+    async loadFromServer() {
+        const dataDiv = document.getElementById('analytics-data');
+        this.state.school_id = dataDiv.dataset.schoolId || "";
+        this.state.grade = dataDiv.dataset.grade || "Grade 9";
+        this.state.exam = dataDiv.dataset.exam || "";
+        this.state.year = dataDiv.dataset.year || "";
+        this.state.term = dataDiv.dataset.term || "";
 
-        if (!this.state.school_id && this.schoolSelect.options.length > 1) {
-            this.state.school_id = this.schoolSelect.options[1].value;
-        }
+        // Set dropdowns
         this.schoolSelect.value = this.state.school_id;
         this.examSelect.value = this.state.exam;
         this.yearSelect.value = this.state.year;
         this.termSelect.value = this.state.term;
 
+        // Populate grade dropdown and load analytics
         await this.cascadeFilters();
         await this.loadAnalytics();
         this.startAutoRefresh();
     }
 
-    startAutoRefresh() {
-        this.stopAutoRefresh();
-        this.autoRefreshInterval = setInterval(() => {
-            if (this.isTabActive) this.loadAnalytics();
-        }, 90000);
-    }
+        startAutoRefresh() {
+            this.stopAutoRefresh();
+            this.autoRefreshInterval = setInterval(() => {
+                if (this.isTabActive) this.loadAnalytics();
+            }, 90000);
+        }
 
-    stopAutoRefresh() {
-        clearInterval(this.autoRefreshInterval);
+        stopAutoRefresh() {
+            clearInterval(this.autoRefreshInterval);
+        }
     }
-}
 
 // ------------------------------------------------------------
 // Helper functions (now outside the class)
@@ -440,7 +445,7 @@ async function exportPDF() {
 document.addEventListener("DOMContentLoaded", async () => {
     const controller = new AnalyticsController();
     controller.bindEvents();
-    await controller.restoreFromURL();
+    await controller.loadFromServer();
     window.analyticsController = controller;
 });
 </script>

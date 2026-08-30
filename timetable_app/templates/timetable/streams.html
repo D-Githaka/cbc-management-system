@@ -1,0 +1,39 @@
+{% extends "timetable_base.html" %}
+
+{% block title %}Configure Streams{% endblock %}
+
+{% block content %}
+<h2>🏫 Configure Streams per Grade</h2>
+<p class="text-muted">Set the number of streams for each grade level.</p>
+
+<form method="POST">
+    <div class="row">
+        {% for level in range(4, 10) %}
+        <div class="col-md-4 mb-3">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <strong>Grade {{ level }}</strong>
+                </div>
+                <div class="card-body">
+                    <label for="streams_{{ level }}" class="form-label">Number of Streams:</label>
+                    <input type="number" class="form-control" 
+                           id="streams_{{ level }}" 
+                           name="streams_{{ level }}" 
+                           value="{{ streams_data.get(level, ['A'])|length }}" 
+                           min="1" max="6">
+                    <div class="mt-2 text-muted small">
+                        Current streams: 
+                        {% if streams_data.get(level) %}
+                            {{ streams_data[level]|join(', ') }}
+                        {% else %}
+                            None configured
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    <button type="submit" class="btn btn-primary">Save Streams</button>
+</form>
+{% endblock %}

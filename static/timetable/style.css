@@ -1,0 +1,76 @@
+/* Existing styles */
+body {
+    background-color: #f8f9fa;
+}
+
+.navbar-brand {
+    font-weight: bold;
+}
+
+.card {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(13, 110, 253, 0.05);
+}
+
+.form-check-input:checked {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+.alert {
+    border-radius: 8px;
+}
+
+.btn {
+    border-radius: 6px;
+}
+
+.btn-lg {
+    padding: 12px 30px;
+}
+
+.badge {
+    font-size: 0.8rem;
+}
+
+/* ----- New step-progress styles ----- */
+.step-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.9rem;
+}
+.step-number {
+    display: inline-block;
+    width: 30px;
+    height: 30px;
+    line-height: 30px;
+    text-align: center;
+    border-radius: 50%;
+    background: #e9ecef;
+    color: #6c757d;
+    font-weight: bold;
+    transition: 0.2s;
+}
+.step-item.active .step-number {
+    background: #0d6efd;
+    color: white;
+}
+.step-item.active .step-label {
+    font-weight: bold;
+    color: #0d6efd;
+}
+.step-connector {
+    flex: 1;
+    height: 2px;
+    background: #e9ecef;
+    margin: 0 10px;
+    align-self: center;
+    transition: 0.2s;
+}
+.step-connector.filled {
+    background: #0d6efd;
+}
