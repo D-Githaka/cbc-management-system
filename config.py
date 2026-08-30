@@ -2,15 +2,15 @@ import os
 from datetime import timedelta
 
 class Config:
-    SECRET_KEY = os.environ.get('SECRET_KEY', '7438')
+    SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-key')
     basedir = os.path.abspath(os.path.dirname(__file__))
     SQLALCHEMY_DATABASE_URI = 'sqlite:///' + os.path.join(basedir, 'database.db')
-    MAX_CONTENT_LENGTH = 2 * 1024 * 1024  # 2 MB
+    MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     REMEMBER_COOKIE_DURATION = timedelta(days=7)
     SESSION_PERMANENT = False
     REMEMBER_COOKIE_SECURE = os.environ.get('FLASK_ENV') == 'production'
-    ADMIN_SECRET = os.environ.get('ADMIN_SECRET_KEY')
+    ADMIN_SECRET = os.environ.get('ADMIN_SECRET_KEY', None)
 
     SESSION_COOKIE_DOMAIN = None  # for localhost; for production use your domain
     SESSION_COOKIE_PATH = '/'
@@ -18,14 +18,14 @@ class Config:
 
     CACHE_TYPE = 'FileSystemCache'
     CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cache')
-    CACHE_DEFAULT_TIMEOUT = 900  # 15 minutes
+    CACHE_DEFAULT_TIMEOUT = 900
 
     MAIL_SERVER = 'smtp.gmail.com'
     MAIL_PORT = 587
     MAIL_USE_TLS = True
-    MAIL_USERNAME = os.environ.get('MAIL_USERNAME', 'your_email@gmail.com')
-    MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD', 'your_app_password')
-    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_USERNAME', 'your_email@gmail.com')
+    MAIL_USERNAME = os.environ.get('MAIL_USERNAME')
+    MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD')
+    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_USERNAME'
 
     '''
     basedir = os.path.abspath(os.path.dirname(__file__))
