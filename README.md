@@ -2,26 +2,26 @@
 
 CBC Online Grade Management System is a lightweight web application for managing student grades, courses, and academic records for CBC. It provides a simple interface for instructors and administrators to record, review, and export grades.
 
-Key features
+## Key features
 
 - Manage students, courses, and assignments
 - Record and update grades
 - Generate simple grade reports and exports (CSV)
 - Web-based interface (HTML + Python backend)
 
-Tech stack
+## Tech stack
 
-- Backend: Python (framework used in the repo)
+- Backend: Python
 - Frontend: HTML/CSS
-- Data storage: (replace with actual DB used in the project, e.g., SQLite, PostgreSQL)
+- Data storage: SQLite by default
 
-Requirements
+## Requirements
 
 - Python 3.8+
 - A virtual environment tool (venv or virtualenv)
-- A database supported by the project (SQLite included by default in many small projects)
+- A database supported by the project (SQLite works by default)
 
-Quick start
+## Quick start
 
 1. Clone the repository
 
@@ -38,48 +38,58 @@ Quick start
 
    pip install -r requirements.txt
 
-4. Run database migrations (if the project uses a framework with migrations)
+4. Run the application
 
-   # Django (if applicable)
-   python manage.py migrate
-   python manage.py createsuperuser
-   python manage.py runserver
+   export FLASK_APP=app:create_app
+   flask run
 
-   # Flask (if applicable)
-   # export FLASK_APP=app.py
-   # flask run
+   Or, if you prefer:
 
-   If the repository uses a different framework or custom setup, refer to the project files for exact commands and additional configuration steps (for example DATABASE_URL, environment variables, or secrets).
+   python app.py
 
-Usage
+## Usage
 
-- Open the application in your browser at http://127.0.0.1:8000 (Django default) or http://127.0.0.1:5000 (Flask default), depending on the project.
-- Log in with an admin account to create courses, students, and assignments, then begin recording grades.
+- Open the application in your browser at http://127.0.0.1:5000
+- Log in with the appropriate admin or teacher account to manage students, schools, and marks
+- Use the app to record student marks, review scores, and generate reports
 
-Testing
+## Database setup
 
-- If tests are included in the repository, run them with:
+The project is configured to use SQLite by default in `config.py`:
 
-  pytest
-  # or
-  python -m unittest discover
+- Database file: `database.db`
+- You may update the config for a production database if needed
 
-Deployment
+## Admin and seed commands
 
-- For production deployment, configure a production-ready database (PostgreSQL recommended), set proper environment variables, and use a WSGI server such as Gunicorn behind a reverse proxy (NGINX).
+The app includes Flask CLI commands for setup and testing:
 
-Contributing
+- `flask seed-demo` — populate the database with demo data
+- `flask create-admin <username> <password>` — create an admin user
+- `flask create-super-admin <username> <password>` — create a super admin
 
-Contributions are welcome. Please open an issue to discuss major changes before submitting a pull request. When submitting PRs, include a clear description of the change, motivation, and any migration or configuration steps required.
+## Testing
 
-License
+If test files are added later, run them with:
 
-Specify the project license here (e.g., MIT, Apache-2.0). Add a LICENSE file to the repository.
+   pytest
 
-Contact
+or:
+
+   python -m unittest discover
+
+## Deployment
+
+For production deployment, configure a secure environment, set proper secrets, and run the app behind a WSGI server such as Gunicorn with HTTPS enabled.
+
+## Contributing
+
+Contributions are welcome. Please open an issue to discuss major changes before submitting a pull request. When submitting PRs, include a clear description of the change and any migration or configuration steps required.
+
+## License
+
+Specify the project license here (for example: MIT, Apache-2.0). Add a `LICENSE` file to the repository.
+
+## Contact
 
 Maintainer: D-Githaka
-
-Notes
-
-This README is intentionally framework-agnostic because the repository may use Django, Flask, or another Python web framework. If you want, I can update this README with exact setup and run instructions after inspecting the repository files (for example, identifying whether the project uses Django or Flask, where the entry point is, and what database is configured).
